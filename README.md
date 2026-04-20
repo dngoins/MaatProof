@@ -1,5 +1,9 @@
 # MaatProof
 
+📄 **[Read the full MaatProof Whitepaper →](./WHITEPAPER.md)**
+
+---
+
 ## Hypothesis: Proof-of-Deploy
 
 If a large language model–based system can produce cryptographically verifiable and deterministic reasoning traces that are reproducible across executions and independently auditable, then such a system can safely replace traditional CI/CD pipelines as the primary mechanism for software validation and deployment.
