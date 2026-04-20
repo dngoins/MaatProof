@@ -44,23 +44,30 @@ Your current setup is already ACI — issues trigger Claude, Claude writes code,
 
 ## The Honest Answer: Hybrid is Right (for now)
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    ORCHESTRATING AGENT                  │
-│       (monitors, decides, fixes, coordinates sub-agents)│
-└────────────────┬───────────────────────────────┬────────┘
-                 │                               │
-   ┌─────────────▼────────────┐   ┌─────────────▼──────────┐
-   │    DETERMINISTIC LAYER   │   │       AGENT LAYER       │
-   │   (still needs CI here)  │   │    (lives above CI)     │
-   │                          │   │                         │
-   │  • Lint (never wrong)    │   │  • Fix failing tests    │
-   │  • Compile               │   │  • Write new tests      │
-   │  • Security scan         │   │  • Code review          │
-   │  • Artifact signing      │   │  • Deployment decisions │
-   │  • Compliance gates      │   │  • Rollback reasoning   │
-   │  • Reproducible build    │   │  • Issue triage         │
-   └──────────────────────────┘   └─────────────────────────┘
+```mermaid
+flowchart TD
+    OA["🤖 ORCHESTRATING AGENT\n(monitors, decides, fixes, coordinates sub-agents)"]
+
+    OA --> DL
+    OA --> AL
+
+    subgraph DL["DETERMINISTIC LAYER — still needs CI here"]
+        D1[Lint]
+        D2[Compile]
+        D3[Security scan]
+        D4[Artifact signing]
+        D5[Compliance gates]
+        D6[Reproducible build]
+    end
+
+    subgraph AL["AGENT LAYER — lives above CI"]
+        A1[Fix failing tests]
+        A2[Write new tests]
+        A3[Code review]
+        A4[Deployment decisions]
+        A5[Rollback reasoning]
+        A6[Issue triage]
+    end
 ```
 
 **Keep deterministic CI for:**
