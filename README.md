@@ -1,193 +1,100 @@
 # MaatProof
 
-> *"The day LLMs have cryptographically verifiable, deterministic reasoning is
-> the day you can drop the pipeline entirely."*
+## Hypothesis: Proof-of-Deploy
 
-MaatProof is a Python framework that implements the **ACI/ACD hybrid pipeline** —
-an architecture where an orchestrating agent coordinates above a deterministic
-trust anchor, and every agent decision is backed by a
-cryptographically-signed reasoning proof.
+If a large language model–based system can produce cryptographically verifiable and deterministic reasoning traces that are reproducible across executions and independently auditable, then such a system can safely replace traditional CI/CD pipelines as the primary mechanism for software validation and deployment.
+---
+
+## Traditional CI/CD vs. Agent-Continuous Dev/Deployment (ACD)
+
+### What you already have is ACI
+
+Your current setup is already ACI — issues trigger Claude, Claude writes code, creates PRs. The pipeline is just a safety net underneath it. The real question is: should agents replace that net, or run above it?
 
 ---
 
-## Architecture
+## Advantages of going full ACD
+
+| Advantage | Why it matters |
+|---|---|
+| Self-healing | Agent doesn't just report a failing test — it fixes it, reruns, and redeploys |
+| Context-aware gates | Agent understands *why* a test fails, not just that it failed. Can decide "this flaky test is irrelevant to this change" |
+| Natural language policy | "Don't deploy on Fridays, unless it's a security fix" is trivial for an agent, painful in YAML |
+| Adaptive workflows | Agent skips Docker build gate when only a README changed |
+| Proactive | Agent monitors production metrics and opens its own issue: "Error rate spiked, rolling back" |
+| No YAML hell | No `.github/workflows/` archaeology |
+
+---
+
+## Disadvantages / Real Risks
+
+| Risk | Why it matters |
+|---|---|
+| Non-determinism | Same code, different LLM run → different deployment decision. This is catastrophic in regulated environments (SOX, HIPAA, etc.) |
+| Auditability gap | "Why did this deploy at 2am?" needs a deterministic answer. LLM reasoning is a chain of thought, not a signed artifact |
+| Blast radius | A confused agent with deploy credentials can silently push broken code to prod. A YAML pipeline fails loudly and stops |
+| Runaway loops | Agent fixes test → breaks another → fixes that → infinite loop → $$$ |
+| Rate limits as deployment gates | Anthropic API down = your deployments stop |
+| Speed | LLM call: ~2–10s per step. `npm test`: 30s flat. A 20-step agent loop is slower than a deterministic pipeline |
+| Security surface | An agent with `gh`, `az`, and `kubectl` access is the highest-value attack target in your org |
+| Current LLM error rate | Agents make mistakes. A CI script either works or it doesn't |
+
+---
+
+## The Honest Answer: Hybrid is Right (for now)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    ORCHESTRATING AGENT                   │
-│  (monitors, decides, fixes, coordinates sub-agents)     │
+│                    ORCHESTRATING AGENT                  │
+│       (monitors, decides, fixes, coordinates sub-agents)│
 └────────────────┬───────────────────────────────┬────────┘
                  │                               │
-    ┌────────────▼────────────┐    ┌─────────────▼──────────┐
-    │  DETERMINISTIC LAYER    │    │   AGENT LAYER           │
-    │  (trust anchor)         │    │  (lives above CI)       │
-    │                         │    │                         │
-    │  • Lint (never wrong)   │    │  • Fix failing tests    │
-    │  • Compile              │    │  • Write new tests      │
-    │  • Security scan        │    │  • Code review          │
-    │  • Artifact signing     │    │  • Deployment decisions │
-    │  • Compliance gates     │    │  • Rollback reasoning   │
-    │  • Reproducible build   │    │  • Issue triage         │
-    └─────────────────────────┘    └─────────────────────────┘
+   ┌─────────────▼────────────┐   ┌─────────────▼──────────┐
+   │    DETERMINISTIC LAYER   │   │       AGENT LAYER       │
+   │   (still needs CI here)  │   │    (lives above CI)     │
+   │                          │   │                         │
+   │  • Lint (never wrong)    │   │  • Fix failing tests    │
+   │  • Compile               │   │  • Write new tests      │
+   │  • Security scan         │   │  • Code review          │
+   │  • Artifact signing      │   │  • Deployment decisions │
+   │  • Compliance gates      │   │  • Rollback reasoning   │
+   │  • Reproducible build    │   │  • Issue triage         │
+   └──────────────────────────┘   └─────────────────────────┘
 ```
 
-**ACI** (Agentic AI Continuous Integration) — what we have today: agents
-augment CI, fixing failures and reviewing code, while the deterministic
-pipeline remains the primary workflow.
+**Keep deterministic CI for:**
+- Anything that touches production artifacts (signed builds, SBOM)
+- Compliance requirements (SOC2, HIPAA audit trails)
+- Security gates — never let an agent decide "this CVE is fine"
+- The final deploy trigger (agent requests deploy; pipeline executes it)
 
-**ACD** (Agent-Continuous Deployment) — the target state: the orchestrating
-agent is the primary workflow, with the deterministic layer as a trust anchor.
-Every deployment decision is backed by a cryptographic proof.
+**Replace with agents:**
+- Everything that currently requires a human to read a failure and decide what to do
+- PR review, test authoring, deployment scheduling
+- Incident response and rollback reasoning
 
 ---
 
-## The Cryptographic Proof
+## The 1 Orchestrating Agent Model
 
-The key innovation is the `ReasoningProof` — a signed, hash-chained artifact
-that answers *"Why did this deploy at 2 am?"* with a deterministic,
-cryptographically verifiable answer.
-
-Each proof records:
-1. The exact input context.
-2. Every step of the reasoning chain (linked via SHA-256 hash chain).
-3. The conclusion reached.
-4. An HMAC-SHA256 signature over the chain root hash.
+This is where it's heading. Essentially:
 
 ```python
-from maatproof import ProofBuilder, ProofVerifier, ReasoningChain
-
-SECRET = b"your-shared-secret"
-
-# Build a reasoning proof
-proof = (
-    ReasoningChain(
-        builder=ProofBuilder(secret_key=SECRET, model_id="gpt-deterministic-v1")
-    )
-    .step(
-        context="PR #42: tests failing in test_auth.py line 15",
-        reasoning="The mock return value changed in the latest fixture update.",
-        conclusion="Updating the mock will fix the failure.",
-    )
-    .step(
-        context="Fix applied; re-running the test suite.",
-        reasoning="All 47 tests pass; coverage unchanged at 94%.",
-        conclusion="Safe to merge.",
-    )
-    .seal(metadata={"pr": 42, "author": "agent"})
-)
-
-# Verify it independently
-assert ProofVerifier(secret_key=SECRET).verify(proof)
-
-# Serialize for audit storage
-import json
-print(json.dumps(proof.to_dict(), indent=2))
+# pseudo-code for what your repo already almost does
+agent.on("code_pushed")      -> run_tests()
+agent.on("test_failed")      -> fix_and_retry(max=3)
+agent.on("all_tests_pass")   -> deploy_to_staging()
+agent.on("staging_healthy")  -> request_human_approval()  # <-- keep this
+agent.on("approved")         -> deploy_to_prod()
+agent.on("prod_error_spike") -> rollback()
 ```
+
+The one thing that should **never** be removed from the loop: **human approval before production**. Not because agents can't decide — but because accountability requires a human in the chain. Your own `CONSTITUTION.md` already enshrines this for Sunbiz submissions. The same principle applies to deployments.
 
 ---
 
-## The Hybrid Pipeline
+## Bottom line
 
-```python
-from maatproof import (
-    ACDPipeline, PipelineConfig, PipelineEvent,
-    DeterministicGate, AgentGate, AgentDecision,
-)
-from maatproof.chain import ReasoningChain
+You don't need traditional CI/CD as the primary workflow — but you want its deterministic, auditable core underneath your agents as a trust anchor. The agent orchestrates; the pipeline executes with receipts.
 
-config = PipelineConfig(
-    name="my-pipeline",
-    secret_key=b"your-shared-secret",
-    model_id="gpt-deterministic-v1",
-    require_human_approval=True,   # constitutional invariant
-    max_fix_retries=3,
-)
-
-pipeline = ACDPipeline(config=config)
-
-# Register deterministic gates (cannot be bypassed by agents)
-pipeline.deterministic_layer.register(
-    DeterministicGate(name="lint", check_fn=lambda **kw: (True, "clean"))
-)
-pipeline.deterministic_layer.register(
-    DeterministicGate(name="security", check_fn=lambda **kw: (True, "no CVEs"))
-)
-
-# Register an agent gate (produces a signed reasoning proof)
-def fix_test(context: str, chain: ReasoningChain, **kw):
-    chain.step(
-        context=context,
-        reasoning="Identified root cause: fixture mock mismatch.",
-        conclusion="Applied targeted fix to test_auth.py.",
-    )
-    return AgentDecision.FIX_AND_RETRY, "Mock fixture updated."
-
-pipeline.agent_layer.register(
-    AgentGate(
-        name="test_fixer",
-        reasoning_fn=fix_test,
-        proof_builder=pipeline.proof_builder,
-    )
-)
-
-# Run the pipeline
-pipeline.run(PipelineEvent.CODE_PUSHED, context="PR #42 pushed")
-pipeline.run(PipelineEvent.TEST_FAILED, context="test_auth.py:15", retry_count=0)
-
-# Production deployment always requires human approval
-result = pipeline.request_deployment(context="deploy v1.2", environment="production")
-print(result["message"])  # "Production deployment requires human approval..."
-print(pipeline.verify_proof(result["proof"]))  # True
-```
-
----
-
-## The One Invariant
-
-**Human approval is always required before a production deployment.**
-
-Not because agents can't decide — but because accountability requires a human
-in the chain.  See [`CONSTITUTION.md`](CONSTITUTION.md) for the full policy.
-
----
-
-## Installation
-
-```bash
-pip install maatproof          # production
-pip install "maatproof[dev]"   # + pytest for development
-```
-
-## Running Tests
-
-```bash
-pytest tests/ -v
-```
-
-## Project Structure
-
-```
-maatproof/
-├── proof.py              # ReasoningStep, ReasoningProof, ProofBuilder, ProofVerifier
-├── chain.py              # ReasoningChain fluent builder
-├── orchestrator.py       # OrchestratingAgent, PipelineEvent, AuditEntry
-├── pipeline.py           # ACIPipeline, ACDPipeline, PipelineConfig
-├── exceptions.py         # Custom exceptions
-└── layers/
-    ├── deterministic.py  # DeterministicLayer, DeterministicGate, GateResult
-    └── agent.py          # AgentLayer, AgentGate, AgentResult, AgentDecision
-tests/
-├── test_proof.py
-├── test_chain.py
-├── test_deterministic.py
-├── test_agent.py
-├── test_orchestrator.py
-└── test_pipeline.py
-CONSTITUTION.md           # Pipeline policy document
-```
-
----
-
-## License
-
-CC0 1.0 Universal — see [`LICENSE`](LICENSE).
+> The day LLMs have cryptographically verifiable, deterministic reasoning is the day you can drop the pipeline entirely.
