@@ -1,0 +1,15 @@
+Metadata-Version: 2.4
+Name: maatproof
+Version: 0.1.0
+Summary: Cryptographically verifiable, deterministic LLM reasoning for the ACI/ACD pipeline
+License: CC0-1.0
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4; extra == "dev"
+Requires-Dist: pytest-cov>=4.1; extra == "dev"
+Dynamic: license-file
+
+# MaatProof
+The day LLMs have cryptographically verifiable, deterministic reasoning is the day you can drop the pipeline entirely.
