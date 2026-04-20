@@ -8,9 +8,9 @@ If a large language model–based system can produce cryptographically verifiabl
 
 ## Traditional CI/CD vs. Agent-Continuous Dev/Deployment (ACD)
 
-### What you already have is ACI
+### What we already have is ACI
 
-Your current setup is already ACI — issues trigger Claude, Claude writes code, creates PRs. The pipeline is just a safety net underneath it. The real question is: should agents replace that net, or run above it?
+For example, issues trigger Claude, Claude writes code, creates PRs. The pipeline is just a safety net underneath it. The real question is: should agents replace that net, or run above it?
 
 ---
 
