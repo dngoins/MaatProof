@@ -44,23 +44,30 @@ For example, issues trigger Claude, Claude writes code, creates PRs. The pipelin
 
 ## The Honest Answer: Hybrid is Right (for now)
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                    ORCHESTRATING AGENT                  │
-│       (monitors, decides, fixes, coordinates sub-agents)│
-└────────────────┬───────────────────────────────┬────────┘
-                 │                               │
-   ┌─────────────▼────────────┐   ┌─────────────▼──────────┐
-   │    DETERMINISTIC LAYER   │   │       AGENT LAYER       │
-   │   (still needs CI here)  │   │    (lives above CI)     │
-   │                          │   │                         │
-   │  • Lint (never wrong)    │   │  • Fix failing tests    │
-   │  • Compile               │   │  • Write new tests      │
-   │  • Security scan         │   │  • Code review          │
-   │  • Artifact signing      │   │  • Deployment decisions │
-   │  • Compliance gates      │   │  • Rollback reasoning   │
-   │  • Reproducible build    │   │  • Issue triage         │
-   └──────────────────────────┘   └─────────────────────────┘
+```mermaid
+flowchart LR
+    OA["🤖 ORCHESTRATING AGENT\nmonitors · decides · fixes · coordinates"]
+
+    OA --> DL
+    OA --> AL
+
+    subgraph DL["DETERMINISTIC LAYER"]
+        D1[Lint]
+        D2[Compile]
+        D3[Security scan]
+        D4[Artifact signing]
+        D5[Compliance gates]
+        D6[Reproducible build]
+    end
+
+    subgraph AL["AGENT LAYER"]
+        A1[Fix failing tests]
+        A2[Write new tests]
+        A3[Code review]
+        A4[Deployment decisions]
+        A5[Rollback reasoning]
+        A6[Issue triage]
+    end
 ```
 
 **Keep deterministic CI for:**
@@ -98,4 +105,4 @@ The one thing that should **never** be removed from the loop: **human approval b
 
 You don't need traditional CI/CD as the primary workflow — but you want its deterministic, auditable core underneath your agents as a trust anchor. The agent orchestrates; the pipeline executes with receipts.
 
-> The day LLMs have cryptographically verifiable, deterministic reasoning is the day you can drop the pipeline entirely.
+> If a large language model–based system can produce cryptographically verifiable and deterministic reasoning traces that are reproducible across executions and independently auditable, then such a system can safely replace traditional CI/CD pipelines as the primary mechanism for software validation and deployment.
