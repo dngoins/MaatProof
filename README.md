@@ -90,7 +90,7 @@ agent.on("approved")         -> deploy_to_prod()
 agent.on("prod_error_spike") -> rollback()
 ```
 
-The one thing that should **never** be removed from the loop: **human approval before production**. Not because agents can't decide — but because accountability requires a human in the chain. Your own `CONSTITUTION.md` already enshrines this for Sunbiz submissions. The same principle applies to deployments.
+The one thing that should **never** be removed from the loop: **human approval before production**. Not because agents can't decide — but because accountability requires a human in the chain. The same principle applies to deployments.
 
 ---
 
