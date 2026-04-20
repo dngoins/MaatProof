@@ -45,13 +45,13 @@ Your current setup is already ACI — issues trigger Claude, Claude writes code,
 ## The Honest Answer: Hybrid is Right (for now)
 
 ```mermaid
-flowchart TD
-    OA["🤖 ORCHESTRATING AGENT\n(monitors, decides, fixes, coordinates sub-agents)"]
+flowchart LR
+    OA["🤖 ORCHESTRATING AGENT\nmonitors · decides · fixes · coordinates"]
 
     OA --> DL
     OA --> AL
 
-    subgraph DL["DETERMINISTIC LAYER — still needs CI here"]
+    subgraph DL["DETERMINISTIC LAYER"]
         D1[Lint]
         D2[Compile]
         D3[Security scan]
@@ -60,7 +60,7 @@ flowchart TD
         D6[Reproducible build]
     end
 
-    subgraph AL["AGENT LAYER — lives above CI"]
+    subgraph AL["AGENT LAYER"]
         A1[Fix failing tests]
         A2[Write new tests]
         A3[Code review]
