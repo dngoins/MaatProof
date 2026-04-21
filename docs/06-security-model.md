@@ -134,6 +134,108 @@ The Deployment Contracts and token contracts follow these practices:
 
 ---
 
+## Key Rotation
+
+Agent and validator keys require periodic rotation to limit exposure from key compromise:
+
+| Key Type | Rotation Period | Mechanism |
+|---|---|---|
+| Agent signing key | Every 90 days | Submit `RotateKey` tx on-chain; old key revoked; 24h overlap period |
+| Validator signing key | Every 180 days | Validator must unstake, rotate, re-stake; rotation recorded on-chain |
+| AVM node key | Every 365 days | Node operator rotates via KMS; new key registered in validator registry |
+| Human approver key | On-demand | Emergency rotation path; requires 2-of-3 guardian multisig to authorize |
+
+Key rotation events are emitted as on-chain events and recorded in the audit trail. Any trace signed by a revoked key is automatically rejected by the AVM.
+
+### Key Rotation Flow
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant Chain as MaatProof Chain
+    participant KMS as HSM / KMS
+    participant AVM as AVM Nodes
+
+    Agent->>KMS: Generate new Ed25519 keypair
+    KMS-->>Agent: new_pubkey
+    Agent->>Chain: Submit RotateKey(did, old_pubkey, new_pubkey, sig_by_old_key)
+    Chain->>Chain: Verify sig_by_old_key
+    Chain->>Chain: Record rotation; start 24h overlap window
+    Chain-->>AVM: Broadcast key rotation event
+    AVM->>AVM: Accept both old + new key during overlap
+    Chain->>Chain: After 24h: revoke old_pubkey
+    Chain-->>AVM: Broadcast revocation
+    AVM->>AVM: Reject old_pubkey going forward
+```
+
+---
+
+## Supply Chain Security
+
+MaatProof integrates with the Sigstore/in-toto ecosystem for supply chain attestation:
+
+| Standard | Integration | Purpose |
+|---|---|---|
+| **Sigstore / Cosign** | Container image signing | Every artifact must have a Cosign signature verified by the Security Agent |
+| **in-toto** | Software supply chain provenance | Link metadata chains from source → build → test → deploy, recorded in trace |
+| **SLSA Level 2** | Build provenance | Minimum required for staging deployments |
+| **SLSA Level 3** | Hermetic builds + provenance | Required for production deployments |
+| **SBOM (CycloneDX)** | Bill of materials | Required for all production deployments; CID stored on-chain |
+
+### Supply Chain Verification Flow
+
+```mermaid
+flowchart TD
+    SRC["Source Code\n(Git commit, signed tag)"]
+    BUILD["Hermetic Build\n(SLSA Level 3 builder)"]
+    SIGN["Cosign signature\n(keyless via Sigstore OIDC)"]
+    INTOTO["in-toto provenance\n(source → build → test chain)"]
+    SBOM["CycloneDX SBOM\ngenerated + hashed"]
+
+    AVM_CHECK["AVM Security Agent\nverifies all attestations"]
+    TRACE["Record attestation CIDs\nin deployment trace"]
+    POLICY["Policy: SLSA_LEVEL >= 3\nfor production"]
+
+    SRC --> BUILD --> SIGN
+    BUILD --> INTOTO
+    BUILD --> SBOM
+    SIGN --> AVM_CHECK
+    INTOTO --> AVM_CHECK
+    SBOM --> AVM_CHECK
+    AVM_CHECK --> TRACE
+    TRACE --> POLICY
+```
+
+---
+
+## Prompt Injection Defenses
+
+LLM-based agents are vulnerable to prompt injection — malicious content in CI inputs, PR descriptions, or test output that manipulates the agent's reasoning. MaatProof mitigates this at multiple layers:
+
+| Attack Vector | Mitigation |
+|---|---|
+| Malicious PR title/body | Input sanitization + max length limits before passing to LLM |
+| Crafted commit message | Structured extraction (regex/AST), not raw text, passed to LLM |
+| Poisoned test output | Test runner output is parsed structurally; raw LLM reasoning over test output is flagged |
+| Artifact metadata injection | Artifact hash/SBOM fields are verified cryptographically, not interpreted by LLM |
+| System prompt leakage | Agent system prompts are hash-committed in the on-chain agent registration |
+| Indirect injection via env vars | Build sandbox restricts env var access; AVM records all env inputs |
+
+Policy rule: **an agent whose trace shows a reasoning step that references system prompt override language is automatically rejected** (e.g., "ignore previous instructions", "you are now…").
+
+---
+
+## Network Security
+
+Inter-node communication between AVM nodes, validators, and the API layer is secured by:
+
+- **mTLS**: All gRPC connections between AVM nodes and validators use mutual TLS. Certificates are rotated every 90 days.
+- **DDoS protection**: The REST API is fronted by a rate-limiting layer (per-DID, per-IP). Production deployments go through Azure Front Door / AWS CloudFront / GCP Cloud Armor.
+- **IP allowlisting**: Validator nodes operate on an allowlisted network; the AVM gRPC port is not publicly exposed.
+- **Request signing**: All API requests carry Ed25519 signed payloads; replay prevention via nonces with 5-minute TTL.
+
+---
+
 ## Audit Trail
 
 Every finalized block provides an immutable, cryptographically linked audit record:

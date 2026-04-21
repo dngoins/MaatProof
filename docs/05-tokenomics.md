@@ -131,6 +131,66 @@ $MAAT holders participate in on-chain governance via the DAO treasury contract. 
 
 ---
 
+## MEV Considerations
+
+Unlike traditional blockchains, MaatProof's PoD consensus processes **deployment proposals** rather than financial transactions. MEV (Maximal Extractable Value) is therefore different in character:
+
+| MEV Type | Risk Level | Mitigation |
+|---|---|---|
+| **Proposal ordering manipulation** | Medium | Round leader is selected by VRF — not economically manipulable |
+| **Selective censorship** | Low | Deployment proposals have a 30s timeout; timeout causes automatic retry with new leader |
+| **Front-running deployments** | Low | Deployments are agent-specific (signed by DID); a different agent cannot "front-run" your deployment |
+| **Validator bribe for approval** | High | 2/3 supermajority required; colluding validators face 100% slash |
+| **Fee manipulation** | Low | Deploy fee is deterministic (formula-based, not auction) |
+
+VRF-based leader selection ensures the leader cannot be predicted in advance, making proposal reordering attacks economically impractical.
+
+---
+
+## Anti-Whale Mechanisms
+
+To prevent concentration of governance and validator power:
+
+| Mechanism | Description |
+|---|---|
+| **Validator stake cap** | Maximum 5% of total staked supply per single validator |
+| **Voting power quadratic scaling** | Governance votes use √(staked $MAAT) to dilute whale influence |
+| **Delegated staking** | Small token holders can delegate to a validator without giving up governance rights |
+| **Validator set rotation** | Minimum 20 active validators required; new validators admitted based on stake + reputation score |
+
+---
+
+## Liquidity Bootstrapping
+
+Phase 1 (pre-mainnet) liquidity strategy:
+
+1. **Testnet incentives** — validators and agents earn testnet $MAAT for participation; 1% of mainnet supply allocated to testnet contributors
+2. **Genesis auction** — 5% public sale via a fair-launch Dutch auction (no insider advantage)
+3. **Ecosystem grants** — 25% (250M $MAAT) deployed over 3 years via DAO grants to integrators and node operators
+4. **DEX listing** — Primary listing on Uniswap V4 (ETH mainnet via cross-chain bridge) + native DEX on MaatProof chain
+5. **Liquidity mining** — Initial 6-month liquidity mining program for $MAAT/ETH pool; 10M $MAAT total incentive budget
+
+### Token Vesting Schedule
+
+```mermaid
+gantt
+    title $MAAT Vesting Timeline
+    dateFormat YYYY-MM-DD
+    section Core Team (15%)
+    Cliff (1 year)        :cliff, 2025-01-01, 365d
+    Vesting (3 years)     :vest_team, after cliff, 1095d
+    section Validators & Nodes (40%)
+    Block rewards released :2025-01-01, 1825d
+    section Ecosystem Grants (25%)
+    DAO-governed unlocks  :2025-01-01, 1095d
+    section Treasury DAO (15%)
+    DAO-governed          :2025-01-01, 1825d
+    section Public Sale (5%)
+    No lockup (TGE)       :2025-01-01, 1d
+```
+
+---
+
 ## Token Flow Diagram
 
 ```mermaid

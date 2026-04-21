@@ -203,3 +203,87 @@ In production, agent signing keys should be stored in hardware-backed KMS:
 | GCP | Cloud KMS (Cloud HSM) | `google-cloud-kms` crate |
 
 The `AgentIdentity` signing interface abstracts the key backend — the `sign()` method delegates to the configured KMS provider. Private keys never leave the HSM boundary.
+
+---
+
+## Agent Versioning
+
+Agents evolve over time — their system prompts, tool manifests, and underlying LLM models change. MaatProof tracks agent versions on-chain:
+
+```rust
+pub struct AgentVersion {
+    pub agent_id:           String,    // did:maat:agent:...
+    pub version:            u32,       // monotonically increasing
+    pub system_prompt_hash: [u8; 32], // SHA-256 of system prompt
+    pub tool_manifest_hash: [u8; 32], // SHA-256 of registered tool list
+    pub llm_model_id:       String,    // e.g., "anthropic/claude-3-7-sonnet"
+    pub registered_at:      i64,
+    pub deprecated_at:      Option<i64>,
+}
+```
+
+- Agent version is included in every deployment trace.
+- Validators reject traces produced by a deprecated agent version.
+- Old versions remain queryable for audit purposes.
+
+### Agent Version Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> REGISTERED: submitRegistration()
+    REGISTERED --> ACTIVE: stake deposited
+    ACTIVE --> DEPRECATED: new version registered
+    DEPRECATED --> RETIRED: 90-day grace period + no active stakes
+    ACTIVE --> SUSPENDED: slash executed (partial)
+    SUSPENDED --> ACTIVE: stake replenished
+    ACTIVE --> TOMBSTONED: slash executed (full, stake=0)
+    TOMBSTONED --> [*]
+```
+
+---
+
+## Capability Escalation Prevention
+
+Agents may only use capabilities they declared at registration time. Escalation prevention:
+
+| Attack | Prevention |
+|---|---|
+| Agent claims new capability at runtime | Capabilities are immutable per version; new capabilities require new registration |
+| Agent calls tool not in manifest | AVM rejects trace with `UNDECLARED_TOOL_CALL` |
+| Agent attempts production deploy with staging role | AVM checks `deploy_environment` against registered capabilities |
+| Delegated agent tries to exceed delegator's capabilities | Delegation tokens include capability subset; delegation cannot escalate beyond delegator |
+| Agent impersonates another DID | Ed25519 signature required; only the key-holder can sign |
+
+---
+
+## Agent Delegation
+
+An agent may delegate a capability subset to another agent for a time-bounded scope:
+
+```rust
+pub struct DelegationToken {
+    pub delegator_id:    String,          // parent agent DID
+    pub delegate_id:     String,          // child agent DID
+    pub capabilities:    Vec<Capability>, // MUST be subset of delegator's capabilities
+    pub valid_from:      i64,
+    pub valid_until:     i64,             // max 24h for production capabilities
+    pub max_deployments: Option<u32>,     // optional use limit
+    pub signature:       String,          // signed by delegator's Ed25519 key
+}
+```
+
+Delegation tokens are submitted on-chain and verified by the AVM before trace processing. A delegated agent's trace includes the delegation token reference.
+
+---
+
+## Agent Retirement / Deregistration
+
+Agents may be voluntarily retired or forcibly deregistered:
+
+| Path | Trigger | Process |
+|---|---|---|
+| **Voluntary retirement** | Operator decision | Agent submits `RetireAgent(did)` tx; stake unlocked after 30-day challenge window |
+| **Forced deregistration** | Slash (stake=0) | Automatic; agent cannot submit new deployments |
+| **Governance removal** | DAO vote | Used for agents that cause systemic harm; requires 2/3 governance vote |
+
+Retired agents remain readable on-chain for audit purposes. Their trace history is permanent.

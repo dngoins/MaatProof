@@ -180,3 +180,126 @@ message DeploymentProposal {
   string signature      = 6;
 }
 ```
+
+---
+
+## Mempool Management
+
+The MaatProof mempool holds pending deployment proposals awaiting consensus.
+
+### Mempool Properties
+
+| Property | Value |
+|---|---|
+| Max pending proposals | 10,000 |
+| Proposal TTL | 5 minutes (evicted if not included in a round) |
+| Ordering | Priority queue: stake-weighted + deploy-environment weight |
+| Deduplication | trace_id uniqueness enforced; duplicates dropped |
+| Max proposal size | 10 MB (full trace JSON-LD) |
+
+### Priority Ordering
+
+```
+proposal_priority = (agent_stake_weight × env_weight) + time_in_mempool_bonus
+```
+
+| Environment | env_weight |
+|---|---|
+| Development | 0.1 |
+| Staging | 1.0 |
+| Production | 10.0 |
+
+Production deployments are prioritized in consensus rounds. Time-in-mempool bonus (+0.1 per minute) prevents starvation of low-stake agents.
+
+---
+
+## Block Structure
+
+Each MaatProof finalized block has the following structure:
+
+```rust
+pub struct MaatBlock {
+    pub header:       BlockHeader,
+    pub body:         BlockBody,
+    pub finalization: BlockFinalization,
+}
+
+pub struct BlockHeader {
+    pub block_height:    u64,
+    pub prev_block_hash: [u8; 32],
+    pub merkle_root:     [u8; 32],    // Merkle root of deployments
+    pub timestamp:       i64,          // Unix timestamp (UTC)
+    pub validator_set_hash: [u8; 32], // Hash of active validator set
+    pub chain_id:        u32,
+}
+
+pub struct BlockBody {
+    pub deployments:     Vec<FinalizedDeployment>,
+    pub slashings:       Vec<SlashRecord>,
+    pub key_rotations:   Vec<KeyRotationRecord>,
+    pub human_approvals: Vec<HumanApprovalRecord>,
+}
+
+pub struct BlockFinalization {
+    pub round_id:             String,
+    pub leader_id:            String,    // DID of round leader
+    pub validator_signatures: Vec<ValidatorSig>,
+    pub quorum_weight:        u128,     // total stake weight that voted FINALIZE
+    pub total_weight:         u128,
+}
+```
+
+### Block Hash Computation
+
+```
+block_hash = sha256(
+  block_height ‖ prev_block_hash ‖ merkle_root ‖ timestamp ‖ chain_id
+)
+```
+
+---
+
+## Chain Sync Protocol
+
+New validators joining the network must sync the full chain history:
+
+### Sync Modes
+
+| Mode | Description | Use Case |
+|---|---|---|
+| **Full sync** | Download and verify all blocks from genesis | New validators |
+| **Fast sync** | Download state snapshot at a trusted checkpoint; verify headers | Quick validator onboarding |
+| **Light sync** | Download block headers only; verify proofs on demand | API nodes, auditors |
+
+### Fast Sync Flow
+
+```mermaid
+sequenceDiagram
+    participant NewNode as New Validator
+    participant Peers as Existing Peers
+    participant Chain as Chain State
+
+    NewNode->>Peers: Request latest checkpoint (block hash + height)
+    Peers-->>NewNode: Checkpoint: block 500,000 hash=0xabc...
+    NewNode->>Peers: Download state snapshot at block 500,000
+    Peers-->>NewNode: State snapshot (IPFS CID)
+    NewNode->>NewNode: Verify snapshot hash matches checkpoint
+    NewNode->>Peers: Sync block headers from 500,000 to current
+    Peers-->>NewNode: Headers (batch of 1,000)
+    NewNode->>NewNode: Verify each header's prev_block_hash chain
+    NewNode->>NewNode: Join validator set; participate in next round
+```
+
+---
+
+## Fork Handling
+
+MaatProof uses BFT consensus with deterministic finality. **Forks do not occur** under normal operation. However, network partition scenarios are handled:
+
+| Scenario | Behavior |
+|---|---|
+| Network partition < 1/3 validators isolated | Remaining 2/3 continue producing blocks; isolated validators halt |
+| Network partition ≥ 1/3 validators isolated | Chain halts — no block can achieve 2/3 supermajority |
+| Partition resolves | Isolated validators sync from the canonical chain; their missed rounds are counted for liveness slashing |
+| Byzantine leader | Round times out (30s); VRF selects new leader; proposal is re-added to mempool |
+```

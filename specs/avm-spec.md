@@ -169,6 +169,84 @@ impl PolicyEvaluator {
 
 ---
 
+## LLM Model Versioning
+
+Every reasoning trace records the LLM model that produced it. This is critical for replay verification and audit.
+
+### Model Metadata in Traces
+
+Each `REASONING` or `DECISION` action in the trace includes:
+
+```rust
+pub struct LlmMetadata {
+    pub provider:    String,   // "anthropic" | "openai" | "mistral" | "local"
+    pub model_id:    String,   // "claude-3-7-sonnet-20250219"
+    pub model_hash:  String,   // SHA-256 of model weights (for local/self-hosted)
+    pub temperature: f32,      // 0.0–1.0; low temperature preferred for agents
+    pub max_tokens:  u32,
+    pub top_p:       f32,
+}
+```
+
+### LLM Provider Abstraction
+
+The AVM defines a `LlmProvider` trait that all LLM backends must implement:
+
+```rust
+pub trait LlmProvider: Send + Sync {
+    /// Return canonical model identifier (e.g., "anthropic/claude-3-7-sonnet-20250219")
+    fn model_id(&self) -> &str;
+
+    /// Execute a single LLM call; returns (response_text, token_usage)
+    async fn complete(
+        &self,
+        system_prompt: &str,
+        messages: &[Message],
+        params: &LlmParams,
+    ) -> Result<LlmResponse, LlmError>;
+
+    /// Return true if this provider supports deterministic mode (seed + temp=0)
+    fn supports_deterministic_mode(&self) -> bool;
+}
+
+pub struct AnthropicProvider { /* ... */ }
+pub struct OpenAiProvider    { /* ... */ }
+pub struct LocalProvider     { /* model_path: PathBuf, ... */ }
+```
+
+### Confidence Scoring
+
+Agents record a `confidence_score` (0.0–1.0) for each decision step. Low-confidence decisions automatically escalate to human approval:
+
+| Confidence | Action |
+|---|---|
+| ≥ 0.90 | Proceed autonomously |
+| 0.70–0.89 | Flag in trace; continue unless policy requires human review |
+| < 0.70 | Mandatory human review before proceeding |
+| Any decision near rollback/reject | Always escalate to human review |
+
+```rust
+pub struct DecisionOutput {
+    pub decision:         DeployDecision,   // APPROVE | REJECT | DEFER
+    pub confidence_score: f32,              // 0.0–1.0
+    pub reasoning_summary: String,
+    pub escalate_to_human: bool,            // auto-set if confidence < 0.70
+}
+```
+
+---
+
+## Prompt Injection Mitigations in AVM
+
+The AVM enforces the following at trace ingestion:
+
+1. **System prompt hash verification** — Each agent registration includes a SHA-256 hash of its system prompt. The AVM verifies that the trace's recorded system prompt hash matches the registered one.
+2. **Input sanitization** — Raw text inputs (PR bodies, commit messages) are length-limited to 4,096 tokens and stripped of control characters before being passed to the LLM tool.
+3. **Injection pattern detection** — The AVM scans all REASONING action inputs for known injection patterns (e.g., "ignore previous instructions", "disregard your system prompt"). Detected patterns cause the trace to be flagged `SUSPICIOUS` and escalated.
+4. **Tool call validation** — Tool call names and parameters are validated against a schema; the LLM cannot invent tool calls that aren't in the registered tool manifest.
+
+---
+
 ## Identity Attestation
 
 Agents sign the canonical trace hash with their Ed25519 private key:
