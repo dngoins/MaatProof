@@ -28,7 +28,7 @@ It replaces traditional pipelines with **cryptographically verifiable deployment
 | **PoD Consensus** | Validators attest deployments |
 | **$MAAT** | Staking, slashing, incentives |
 
-📄 **[Read the full MaatProof Whitepaper →](./WHITEPAPER.md)**
+📄 **[Read the full MaatProof Whitepaper →](https://www.overleaf.com/read/hvsvqyvzfmhf#89e3b9)**
 
 ---
 
