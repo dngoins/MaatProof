@@ -1,4 +1,32 @@
-# MaatProof
+# MaatProof — Proof of Deploy
+
+MaatProof is a Layer 1 blockchain for **Agentic CI/CD (ACI/ACD)**.
+
+It replaces traditional pipelines with **cryptographically verifiable deployment decisions made by AI agents**, enforced through:
+
+- Proof-of-Deploy consensus
+- Agent Virtual Machine (AVM)
+- On-chain deployment policies
+- Verifiable reasoning traces
+
+## Status
+
+🚧 Spec Phase — Pre-implementation
+
+## Goals
+
+- Replace CI/CD with verifiable pipelines
+- Make AI deployments auditable
+- Introduce economic accountability for agents
+
+## Key Components
+
+| Component | Role |
+|---|---|
+| **AVM** | Executes and verifies agent reasoning |
+| **Deployment Contracts** | Policy as code, on-chain |
+| **PoD Consensus** | Validators attest deployments |
+| **$MAAT** | Staking, slashing, incentives |
 
 📄 **[Read the full MaatProof Whitepaper →](./WHITEPAPER.md)**
 
