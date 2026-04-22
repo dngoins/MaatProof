@@ -40,7 +40,7 @@ jobs:
           REPO: ${{ github.repository }}
           CHANGED_FILES: ${{ steps.changes.outputs.files }}
         run: |
-          SYSTEM_PROMPT=$(cat .github/agents/developer-agent.md)
+          SYSTEM_PROMPT=$(cat .github/agents/development-agent.md)
 
           PROMPT="You are the PR Review Agent (Mode 2). Review this pull request.
 
