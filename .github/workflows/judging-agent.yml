@@ -82,4 +82,4 @@ jobs:
           Use gh CLI for all GitHub operations.
           "
 
-          claude --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+          claude -p --dangerously-skip-permissions --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
