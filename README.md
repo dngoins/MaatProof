@@ -13,6 +13,43 @@ It replaces traditional pipelines with **cryptographically verifiable deployment
 
 🚧 Spec Phase — Pre-implementation
 
+## Agentic AI Loop
+
+MaatProof uses a fully automated agentic pipeline powered by GitHub Actions and AI agents (Claude + GPT). Every issue flows through a structured sequence of agents before reaching production.
+
+```mermaid
+graph LR
+    A[Planner] --> B[Spec Edge Case Tester]
+    B --> C[Cost Estimator]
+    C --> D[Development\n4 competing branches]
+    D --> E[Judging Agent]
+    E --> F[Human Selects Winner]
+    F --> G[PR Review]
+    G --> H[QA Testing]
+    H --> I[Documenter]
+    I --> J[Release Agent]
+    K[Orchestrator] -.->|monitors all| A
+    K -.-> D
+    K -.-> G
+    L[Nightly Backlog] -.->|seeds issues| A
+```
+
+### Agent Pipeline Summary
+
+| Step | Agent | What it does |
+|------|-------|-------------|
+| 1 | **Planner** | Decomposes feature request into 9 scoped child issues with acceptance criteria |
+| 2 | **Spec Edge Case Tester** | Generates up to 100 edge cases, validates specs reach ≥90% coverage |
+| 3 | **Cost Estimator** | Compares Azure vs AWS vs GCP costs, calculates ACI/ACD savings using DORA metrics |
+| 4 | **Development** | Spawns 4 concurrent implementations (Claude Sonnet, Claude Opus, GPT 5.3 Codex, GPT 5.4) |
+| 5 | **Judging** | Scores all 4 implementations on Big O complexity, code quality, cost, performance, security |
+| 6 | **PR Review** | Posts 10-dimension review score on every PR |
+| 7 | **QA Testing** | Validates against 10 comparison dimensions with pass/fail criteria |
+| 8 | **Documenter** | Updates all public-facing docs, changelog, and diagrams |
+| 9 | **Release** | Creates semantic version tag and GitHub Release |
+| ∞ | **Orchestrator** | Monitors all events, re-triggers stalled agents (max 15 retries) |
+| 🕐 | **Nightly Backlog** | Cron job seeds issues from `docs/requirements/backlog.md` every weekday at 7am UTC |
+
 ## Goals
 
 - Replace CI/CD with verifiable pipelines
