@@ -64,4 +64,4 @@ jobs:
           Use gh CLI for GitHub operations. Use git for commits.
           "
 
-          claude --yes --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+          claude -p --dangerously-skip-permissions --system-prompt "$SYSTEM_PROMPT" "$PROMPT"

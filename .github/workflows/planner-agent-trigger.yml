@@ -60,4 +60,4 @@ jobs:
           - gh issue comment ${ISSUE_NUMBER} --repo ${REPO} --body '...'
           "
 
-          claude --yes --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+          claude -p --dangerously-skip-permissions --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
