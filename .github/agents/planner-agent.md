@@ -48,7 +48,14 @@ Each issue must carry **all applicable labels**:
 - **Use-case label** — if applicable: `use-case:outbound` or `use-case:inbound`
 
 ### Dependencies
-Issues must be created in dependency order. Use the Dependencies section in each issue body to document which issues block which. The general dependency chain is:
+Issues must be created in dependency order. The **Spec Edge Case Tester** must pass before any issue moves to development. Use the Dependencies section in each issue body to document which issues block which. The general flow is:
+
+```
+Planner creates issues → Spec Edge Case Tester validates specs (must reach 90% coverage)
+  → spec:passed label applied → Developer agent begins work
+```
+
+The dependency chain for deliverables is:
 
 1. Data Model / Schema ← (no blockers)
 2. Core Implementation ← blocked by Data Model

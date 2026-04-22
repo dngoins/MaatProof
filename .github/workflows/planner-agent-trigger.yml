@@ -46,6 +46,7 @@ jobs:
              - Have a title following the pattern: [{topic_name}] {Deliverable Name}
              - Include the topic name, requirements, and tech stack in the body
              - Reference the parent issue #${ISSUE_NUMBER}
+             - Carry the label 'agent:spec-edge-test' (NOT 'agent:developer') so the Spec Edge Case Tester runs before any development begins
           3. After creating all issues, post a comment on issue #${ISSUE_NUMBER} listing every child issue with its number and link.
 
           Use these gh CLI commands:
