@@ -47,14 +47,14 @@ jobs:
              - If the fix is straightforward, edit the spec file directly, commit, and push.
              - If the fix is complex, create a GitHub Issue with label 'role:architect'.
           5. Calculate coverage. If coverage >= 90%:
-             - Post a comment on issue #${ISSUE_NUMBER}: '✅ Spec coverage: {N}% — specs validated. Ready for development.'
+             - Post a comment on issue #${ISSUE_NUMBER}: '✅ Spec coverage: {N}% — specs validated. Ready for cost estimation.'
              - Remove the label 'agent:spec-edge-test' from issue #${ISSUE_NUMBER}.
              - Add the label 'spec:passed' to issue #${ISSUE_NUMBER}.
-             - Add the label 'agent:developer' to issue #${ISSUE_NUMBER} to trigger the developer agent.
+             - Add the label 'agent:cost-estimator' to issue #${ISSUE_NUMBER} to trigger the Cost Estimator Agent.
           6. If coverage < 90%:
              - Post a comment listing all gaps and their severity.
              - Keep the 'agent:spec-edge-test' label (orchestrator will re-trigger after fixes).
-             - Do NOT add 'agent:developer' — the issue is blocked until specs pass.
+             - Do NOT add 'agent:cost-estimator' — the issue is blocked until specs pass.
 
           Use gh CLI for all GitHub operations. Use git for any spec file commits.
           Commit message format: 'fix(spec): address EDGE-{NNN} — {description} [skip ci]'
