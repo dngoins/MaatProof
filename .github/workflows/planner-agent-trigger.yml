@@ -1,0 +1,56 @@
+name: Planner Agent Trigger
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: planner-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'agent:planner')
+    runs-on: enterprise-agentic
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Planner Agent via Claude Code CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          SYSTEM_PROMPT=$(cat .github/agents/planner-agent.md)
+
+          PROMPT="You are the Planner Agent. Here is the issue to process:
+
+          Title: ${ISSUE_TITLE}
+          Body:
+          ${ISSUE_BODY}
+
+          Repository: ${REPO}
+          Parent issue number: ${ISSUE_NUMBER}
+
+          Instructions:
+          1. Extract the topic name, requirements, and tech stack from the issue body.
+          2. Create 9 child issues (one per deliverable listed in your persona) using the gh CLI.
+             Each issue must:
+             - Have a title following the pattern: [{topic_name}] {Deliverable Name}
+             - Include the topic name, requirements, and tech stack in the body
+             - Reference the parent issue #${ISSUE_NUMBER}
+          3. After creating all issues, post a comment on issue #${ISSUE_NUMBER} listing every child issue with its number and link.
+
+          Use these gh CLI commands:
+          - gh issue create --repo ${REPO} --title '...' --body '...'
+          - gh issue comment ${ISSUE_NUMBER} --repo ${REPO} --body '...'
+          "
+
+          claude --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
