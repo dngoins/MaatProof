@@ -66,4 +66,4 @@ jobs:
           Commit message format: 'fix(spec): address EDGE-{NNN} — {description} [skip ci]'
           "
 
-          claude --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+          claude --yes --system-prompt "$SYSTEM_PROMPT" "$PROMPT"

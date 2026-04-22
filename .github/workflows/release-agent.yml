@@ -63,4 +63,4 @@ jobs:
           Commit message for version bumps: 'chore(release): bump to v{VERSION} [skip ci]'
           "
 
-          claude --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+          claude --yes --system-prompt "$SYSTEM_PROMPT" "$PROMPT"

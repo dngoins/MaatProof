@@ -60,7 +60,7 @@ jobs:
           6. Do NOT auto-merge. Leave final approval to the human reviewer.
           "
 
-          claude --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+          claude --yes --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
 
       - name: Skip — no files changed
         if: steps.changes.outputs.files == ''
