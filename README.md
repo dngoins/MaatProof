@@ -175,3 +175,21 @@ The one thing that should **never** be removed from the loop: **human approval b
 You don't need traditional CI/CD as the primary workflow — but you want its deterministic, auditable core underneath your agents as a trust anchor. The agent orchestrates; the pipeline executes with receipts.
 
 > If a large language model–based system can produce cryptographically verifiable and deterministic reasoning traces that are reproducible across executions and independently auditable, then such a system can safely replace traditional CI/CD pipelines as the primary mechanism for software validation and deployment.
+
+---
+
+## 💰 Cost Savings (ACI/ACD vs Traditional)
+
+| Metric | Traditional | MaatProof ACI/ACD | Savings |
+|--------|-------------|-------------------|---------|
+| Build cost per issue | $2,326 | $148 | **94%** |
+| Annual CI/CD cost (4-dev team) | $304,392 | $2,429 | **99%** |
+| Developer hours/year on CI/CD | 3,104 hrs | ~100 hrs | **3,004 hrs** |
+| Mean deploy time | 5 days | 2 hours | **97%** |
+| Defect escape rate | 15% | 3% | **80% ↓** |
+| MTTR | 4 hours | 15 minutes | **94% ↓** |
+| 5-year TCO | $1,521,960 | $14,124 | **$1,507,836** |
+| ROI (Year 1) | — | — | **12,433%** |
+
+> _Last estimated: 2026-04-22 · Issue #14 [ACI/ACD Engine] Data Model/Schema_
+> [Full report](docs/reports/cost-estimation-report.md) · [Interactive charts](docs/reports/cost-summary.html)
