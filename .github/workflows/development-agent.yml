@@ -58,7 +58,7 @@ jobs:
           5. Stage and commit all files.
           "
 
-          claude -p --dangerously-skip-permissions --model sonnet --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+          claude --yes --model sonnet --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
 
           git add -A
           git diff --cached --quiet || git commit -m "feat: implement ${ISSUE_TITLE} via Claude Sonnet"
@@ -127,7 +127,7 @@ jobs:
           5. Stage and commit all files.
           "
 
-          claude -p --dangerously-skip-permissions --model opus --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+          claude --yes --model opus --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
 
           git add -A
           git diff --cached --quiet || git commit -m "feat: implement ${ISSUE_TITLE} via Claude Opus"
