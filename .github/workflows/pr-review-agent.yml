@@ -6,7 +6,7 @@ on:
 
 jobs:
   review:
-    runs-on: enterprise-agentic
+    runs-on: ubuntu-latest
     permissions:
       pull-requests: write
       contents: read

@@ -12,7 +12,7 @@ jobs:
   plan:
     if: >-
       contains(github.event.issue.labels.*.name, 'agent:planner')
-    runs-on: enterprise-agentic
+    runs-on: ubuntu-latest
     permissions:
       issues: write
       contents: read
