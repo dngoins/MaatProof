@@ -1,0 +1,241 @@
+name: Orchestrator Agent
+
+on:
+  issues:
+    types: [opened, labeled]
+  push:
+    branches: ['**']
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch: {}
+
+concurrency:
+  group: orchestrator-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  orchestrate:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Gather repository state and orchestrate
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          MAX_RETRIES: "15"
+        run: |
+          set -euo pipefail
+
+          SUMMARY_COMPLETE=""
+          SUMMARY_BLOCKED=""
+          SUMMARY_REVIEW=""
+          SUMMARY_MERGE=""
+          SUMMARY_NEXT=""
+
+          # ─── Helper: get retry count from issue/PR comments ───
+          get_retry_count() {
+            local number=$1
+            local type=$2  # "issue" or "pr"
+            local count
+            if [ "$type" = "pr" ]; then
+              count=$(gh pr view "$number" --repo "$REPO" --json comments \
+                --jq '[.comments[].body | select(test("Orchestrator.*attempt [0-9]+/"))] | length')
+            else
+              count=$(gh issue view "$number" --repo "$REPO" --json comments \
+                --jq '[.comments[].body | select(test("Orchestrator.*attempt [0-9]+/"))] | length')
+            fi
+            echo "${count:-0}"
+          }
+
+          # ─── Process open PRs ───
+          echo "=== Checking open PRs ==="
+          PR_LIST=$(gh pr list --repo "$REPO" --state open --json number,title,labels,reviewDecision,statusCheckRollup,headRefName --jq '.')
+
+          echo "$PR_LIST" | jq -c '.[]' | while read -r pr; do
+            PR_NUM=$(echo "$pr" | jq -r '.number')
+            PR_TITLE=$(echo "$pr" | jq -r '.title')
+            REVIEW_DECISION=$(echo "$pr" | jq -r '.reviewDecision // "NONE"')
+            HAS_REVIEW_PASSED=$(echo "$pr" | jq -r '[.labels[].name] | any(. == "review:passed")')
+            CHECK_STATUS=$(echo "$pr" | jq -r '[.statusCheckRollup[]?.conclusion // "PENDING"] | if any(. == "FAILURE") then "FAILURE" elif any(. == "PENDING") then "PENDING" else "SUCCESS" end')
+
+            RETRIES=$(get_retry_count "$PR_NUM" "pr")
+            NEXT_ATTEMPT=$((RETRIES + 1))
+
+            echo "PR #${PR_NUM}: checks=${CHECK_STATUS} review=${REVIEW_DECISION} passed_label=${HAS_REVIEW_PASSED} retries=${RETRIES}"
+
+            # Skip if max retries reached
+            if [ "$RETRIES" -ge "$MAX_RETRIES" ]; then
+              SUMMARY_BLOCKED="${SUMMARY_BLOCKED}\n- [ ] PR #${PR_NUM} — ⛔ Max retries (${MAX_RETRIES}) reached. Needs human intervention."
+              continue
+            fi
+
+            # CI failed
+            if [ "$CHECK_STATUS" = "FAILURE" ]; then
+              SUMMARY_BLOCKED="${SUMMARY_BLOCKED}\n- [ ] PR #${PR_NUM} (${PR_TITLE}) — CI checks failed"
+              if [ "$RETRIES" -lt "$MAX_RETRIES" ]; then
+                gh pr comment "$PR_NUM" --repo "$REPO" \
+                  --body "🤖 **Orchestrator:** CI checks failed. Please review the failures and push a fix. (attempt ${NEXT_ATTEMPT}/${MAX_RETRIES})"
+              fi
+              continue
+            fi
+
+            # CI pending
+            if [ "$CHECK_STATUS" = "PENDING" ]; then
+              SUMMARY_BLOCKED="${SUMMARY_BLOCKED}\n- [ ] PR #${PR_NUM} (${PR_TITLE}) — CI checks still running"
+              continue
+            fi
+
+            # CI passed but no review score yet
+            if [ "$CHECK_STATUS" = "SUCCESS" ] && [ "$HAS_REVIEW_PASSED" = "false" ] && [ "$REVIEW_DECISION" = "NONE" ]; then
+              SUMMARY_BLOCKED="${SUMMARY_BLOCKED}\n- [ ] PR #${PR_NUM} (${PR_TITLE}) — Awaiting review agent score"
+              if [ "$RETRIES" -lt "$MAX_RETRIES" ]; then
+                gh pr comment "$PR_NUM" --repo "$REPO" \
+                  --body "🤖 **Orchestrator:** CI passed but no review score posted yet. Re-triggering review. (attempt ${NEXT_ATTEMPT}/${MAX_RETRIES})"
+              fi
+              continue
+            fi
+
+            # Review passed — ready for human
+            if [ "$HAS_REVIEW_PASSED" = "true" ]; then
+              SUMMARY_REVIEW="${SUMMARY_REVIEW}\n- [ ] PR #${PR_NUM} (${PR_TITLE}) — ✅ Review passed, awaiting human approval"
+              SUMMARY_MERGE="${SUMMARY_MERGE}\n- [x] PR #${PR_NUM} — Safe to merge (CI ✅, review ✅)"
+              continue
+            fi
+
+            # Changes requested
+            if [ "$REVIEW_DECISION" = "CHANGES_REQUESTED" ]; then
+              SUMMARY_BLOCKED="${SUMMARY_BLOCKED}\n- [ ] PR #${PR_NUM} (${PR_TITLE}) — Changes requested by reviewer"
+              if [ "$RETRIES" -lt "$MAX_RETRIES" ]; then
+                gh pr comment "$PR_NUM" --repo "$REPO" \
+                  --body "🤖 **Orchestrator:** Changes were requested. Please address the review feedback. (attempt ${NEXT_ATTEMPT}/${MAX_RETRIES})"
+              fi
+              continue
+            fi
+
+            # Approved — ready to merge
+            if [ "$REVIEW_DECISION" = "APPROVED" ]; then
+              SUMMARY_COMPLETE="${SUMMARY_COMPLETE}\n- [x] PR #${PR_NUM} (${PR_TITLE}) — Approved and ready to merge"
+              SUMMARY_MERGE="${SUMMARY_MERGE}\n- [x] PR #${PR_NUM} — Safe to merge"
+              continue
+            fi
+          done
+
+          # ─── Process open Issues ───
+          echo "=== Checking open issues ==="
+          ISSUE_LIST=$(gh issue list --repo "$REPO" --state open --json number,title,labels,updatedAt --jq '.')
+
+          echo "$ISSUE_LIST" | jq -c '.[]' | while read -r issue; do
+            ISSUE_NUM=$(echo "$issue" | jq -r '.number')
+            ISSUE_TITLE=$(echo "$issue" | jq -r '.title')
+            HAS_PLANNER=$(echo "$issue" | jq -r '[.labels[].name] | any(. == "agent:planner")')
+            HAS_LOOP_COMPLETE=$(echo "$issue" | jq -r '[.labels[].name] | any(. == "loop:complete")')
+            UPDATED=$(echo "$issue" | jq -r '.updatedAt')
+
+            # Skip completed
+            if [ "$HAS_LOOP_COMPLETE" = "true" ]; then
+              SUMMARY_COMPLETE="${SUMMARY_COMPLETE}\n- [x] Issue #${ISSUE_NUM} (${ISSUE_TITLE}) — Loop complete"
+              continue
+            fi
+
+            RETRIES=$(get_retry_count "$ISSUE_NUM" "issue")
+            NEXT_ATTEMPT=$((RETRIES + 1))
+
+            if [ "$RETRIES" -ge "$MAX_RETRIES" ]; then
+              SUMMARY_BLOCKED="${SUMMARY_BLOCKED}\n- [ ] Issue #${ISSUE_NUM} — ⛔ Max retries (${MAX_RETRIES}) reached."
+              continue
+            fi
+
+            # Check staleness (updated more than 1 hour ago)
+            UPDATED_EPOCH=$(date -d "$UPDATED" +%s 2>/dev/null || echo 0)
+            NOW_EPOCH=$(date +%s)
+            AGE_SECONDS=$((NOW_EPOCH - UPDATED_EPOCH))
+
+            if [ "$HAS_PLANNER" = "true" ] && [ "$AGE_SECONDS" -gt 3600 ]; then
+              SUMMARY_BLOCKED="${SUMMARY_BLOCKED}\n- [ ] Issue #${ISSUE_NUM} (${ISSUE_TITLE}) — Planner stalled, re-triggering"
+              # Remove and re-add label to re-trigger the planner workflow
+              gh issue edit "$ISSUE_NUM" --repo "$REPO" --remove-label "agent:planner"
+              sleep 2
+              gh issue edit "$ISSUE_NUM" --repo "$REPO" --add-label "agent:planner"
+              gh issue comment "$ISSUE_NUM" --repo "$REPO" \
+                --body "🤖 **Orchestrator:** Re-triggering planner — no progress detected after last run. (attempt ${NEXT_ATTEMPT}/${MAX_RETRIES})"
+              continue
+            fi
+
+            # Open issue not yet picked up
+            if [ "$HAS_PLANNER" = "false" ] && [ "$AGE_SECONDS" -gt 3600 ]; then
+              SUMMARY_NEXT="${SUMMARY_NEXT}\n- [ ] Issue #${ISSUE_NUM} (${ISSUE_TITLE}) — Open, no agent assigned"
+            fi
+          done
+
+          # ─── Check workflow runs ───
+          echo "=== Checking recent workflow runs ==="
+          FAILED_RUNS=$(gh run list --repo "$REPO" --status failure --limit 5 --json databaseId,name,conclusion,headBranch \
+            --jq '.[] | "- \(.name) on \(.headBranch): \(.conclusion)"')
+          if [ -n "$FAILED_RUNS" ]; then
+            SUMMARY_BLOCKED="${SUMMARY_BLOCKED}\n\n**Recent failed workflow runs:**\n${FAILED_RUNS}"
+          fi
+
+          # ─── Check environment parameter files ───
+          echo "=== Checking environment parameter files ==="
+          ENV_FILES=("parameters.dev.json" "parameters.uat.json" "parameters.staging.json" "parameters.prod.json")
+          ENV_STATUS=""
+          for f in "${ENV_FILES[@]}"; do
+            FOUND=$(find . -name "$f" 2>/dev/null | head -1)
+            if [ -n "$FOUND" ]; then
+              ENV_STATUS="${ENV_STATUS}\n- [x] ${f} — found"
+            else
+              ENV_STATUS="${ENV_STATUS}\n- [ ] ${f} — **missing**"
+            fi
+          done
+
+          # ─── Post summary ───
+          BODY="## 🤖 Orchestrator Status Report
+
+          ### ✅ Complete
+          ${SUMMARY_COMPLETE:-_Nothing completed yet._}
+
+          ### 🚧 Blocked
+          ${SUMMARY_BLOCKED:-_Nothing blocked._}
+
+          ### 👤 Needs Human Review
+          ${SUMMARY_REVIEW:-_No PRs awaiting human review._}
+
+          ### 🔀 Merge Safety
+          ${SUMMARY_MERGE:-_No PRs ready to merge._}
+
+          ### 🗂️ Environment Parameter Files
+          ${ENV_STATUS}
+
+          ### 📋 Next Sprint Focus
+          ${SUMMARY_NEXT:-_No unassigned issues._}
+
+          ---
+          _Generated by Orchestrator Agent at $(date -u +'%Y-%m-%d %H:%M UTC')_"
+
+          # Post summary to the triggering event
+          EVENT="${{ github.event_name }}"
+          if [ "$EVENT" = "pull_request" ]; then
+            PR_NUM="${{ github.event.pull_request.number }}"
+            gh pr comment "$PR_NUM" --repo "$REPO" --body "$BODY"
+          elif [ "$EVENT" = "issues" ]; then
+            ISSUE_NUM="${{ github.event.issue.number }}"
+            gh issue comment "$ISSUE_NUM" --repo "$REPO" --body "$BODY"
+          elif [ "$EVENT" = "push" ] || [ "$EVENT" = "workflow_dispatch" ]; then
+            # Post as a new issue comment on the most recent open tracking issue, or log
+            TRACKING=$(gh issue list --repo "$REPO" --state open --label "agent:planner" --json number --jq '.[0].number // empty')
+            if [ -n "$TRACKING" ]; then
+              gh issue comment "$TRACKING" --repo "$REPO" --body "$BODY"
+            else
+              echo "No tracking issue found — printing summary to log."
+              echo -e "$BODY"
+            fi
+          fi
+
+          echo "=== Orchestrator complete ==="

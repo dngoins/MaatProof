@@ -134,4 +134,97 @@ the responsible default.
 
 ---
 
-*Last updated: 2026-04-20*
+*Last updated: 2026-04-22*
+
+---
+
+## §9 — Spec-First Rule
+
+No implementation work may begin without a user story and acceptance criteria.
+
+- Every feature must have a GitHub Issue with a clear user story in the format: *"As a [role], I want [goal], so that [benefit]."*
+- Each issue must list measurable acceptance criteria before any code is written.
+- PRs that lack a linked issue with acceptance criteria must not be merged.
+
+---
+
+## §10 — Agents Draft, Humans Approve
+
+AI agents generate code and documentation; humans review before merge.
+
+- Agents may create branches, write code, open PRs, and post review scores.
+- Agents may **not** approve their own PRs or merge any PR.
+- Every PR requires at least one human approval before merge.
+- Agent-generated artifacts must be clearly attributed (commit trailer, PR comment, or label).
+
+---
+
+## §11 — Small, Reversible Changes
+
+All changes must be atomic and independently revertable.
+
+- One function per PR — do not bundle unrelated logic changes.
+- One pipeline conversion per PR — each integration is its own unit of work.
+- If a PR touches more than one domain, split it.
+- Every merged PR must be safely revertable without cascading failures.
+
+---
+
+## §12 — Traceability
+
+Every generated artifact must map back to its origin and forward to its verification.
+
+- Each artifact must trace to: a **user story**, **acceptance criteria**, and **tests**.
+- PRs must reference the originating issue number (`Part of #N`, `Closes #N`).
+- Test cases must reference the acceptance criteria they verify.
+- Documentation must reference the artifacts it describes.
+
+---
+
+## §13 — Naming Conventions
+
+Consistent naming across all project artifacts.
+
+- **Azure Functions:** `Func-{Domain}-{Action}` (e.g., `Func-Inventory-Sync`)
+- **Bicep files:** `{domain}-{resource}.bicep` (e.g., `inventory-function-app.bicep`)
+- **GitHub Actions workflows:** `{purpose}-{scope}.yml` (e.g., `planner-agent-trigger.yml`, `pr-review-agent.yml`)
+- **Branch names:** `{type}/{short-description}` (e.g., `feat/inventory-sync`, `fix/auth-token-refresh`)
+- **Issues:** `[{topic}] {Deliverable}` (e.g., `[Inventory] Unit Tests`)
+- **PR titles:** `{type}: {short description}` (e.g., `feat: add inventory sync function`)
+
+---
+
+## §14 — Definition of Done
+
+A work item is "done" only when **all** of the following are true:
+
+- [ ] User story and acceptance criteria exist in the linked issue
+- [ ] Implementation matches acceptance criteria
+- [ ] Unit tests written and passing
+- [ ] Integration tests written and passing (where applicable)
+- [ ] CI pipeline passes (lint, compile, security scan)
+- [ ] PR review agent scores all dimensions ≥ 7
+- [ ] At least one human reviewer has approved the PR
+- [ ] Documentation updated (README, architecture docs, inline comments)
+- [ ] Configuration defined for all target environments
+- [ ] No unresolved review comments remain
+- [ ] PR merged via squash merge with clean commit message
+
+---
+
+## §15 — Label Taxonomy
+
+GitHub labels serve as the routing mechanism for agent and human workflows.
+
+| Label | Purpose |
+|-------|---------|
+| `role:ba` | Owned by Business Analyst |
+| `role:architect` | Owned by Architect |
+| `role:developer` | Owned by Developer |
+| `role:qa` | Owned by QA |
+| `role:release` | Owned by Release Manager |
+| `agent:planner` | Triggers Planner Agent |
+| `use-case:outbound` | Outbound integration pattern |
+| `use-case:inbound` | Inbound integration pattern |
+| `review:passed` | PR passed automated review |
+| `loop:complete` | All child issues for a tracking issue are closed |

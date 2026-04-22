@@ -1,0 +1,97 @@
+name: Loop Completion Check
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  check-loop:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Find linked parent issue
+        id: parent
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Extract parent issue number from PR body (expects "Closes #N" or "Fixes #N" or "Part of #N")
+          PARENT=$(echo "$PR_BODY" | grep -oP '(?:Closes|Fixes|Resolves|Part of) #\K[0-9]+' | head -1)
+          if [ -z "$PARENT" ]; then
+            echo "No linked parent issue found — skipping loop check."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "parent_issue=${PARENT}" >> "$GITHUB_OUTPUT"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Count open sibling issues
+        if: steps.parent.outputs.skip != 'true'
+        id: count
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PARENT_ISSUE: ${{ steps.parent.outputs.parent_issue }}
+        run: |
+          # Count open issues that reference the same parent
+          OPEN_COUNT=$(gh issue list --repo "$REPO" --state open --search "\"Part of #${PARENT_ISSUE}\"" --json number --jq 'length')
+          echo "open_count=${OPEN_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "Found ${OPEN_COUNT} open sibling issues for parent #${PARENT_ISSUE}"
+
+      - name: Loop continues — re-trigger next issue
+        if: steps.parent.outputs.skip != 'true' && steps.count.outputs.open_count != '0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PARENT_ISSUE: ${{ steps.parent.outputs.parent_issue }}
+          OPEN_COUNT: ${{ steps.count.outputs.open_count }}
+        run: |
+          gh pr comment "$PR_NUMBER" --repo "$REPO" \
+            --body "🔄 **Loop continuing** — ${OPEN_COUNT} issues remain for tracking issue #${PARENT_ISSUE}."
+
+          # Get the oldest open sibling issue
+          OLDEST_ISSUE=$(gh issue list --repo "$REPO" --state open \
+            --search "\"Part of #${PARENT_ISSUE}\"" \
+            --json number --jq 'sort_by(.number) | .[0].number')
+
+          if [ -n "$OLDEST_ISSUE" ]; then
+            gh issue edit "$OLDEST_ISSUE" --repo "$REPO" --add-label "agent:planner"
+            echo "Re-labeled issue #${OLDEST_ISSUE} with agent:planner"
+          fi
+
+      - name: Loop complete — post summary
+        if: steps.parent.outputs.skip != 'true' && steps.count.outputs.open_count == '0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PARENT_ISSUE: ${{ steps.parent.outputs.parent_issue }}
+        run: |
+          # Gather all closed issues referencing the parent
+          CLOSED_ISSUES=$(gh issue list --repo "$REPO" --state closed \
+            --search "\"Part of #${PARENT_ISSUE}\"" \
+            --json number,title --jq '.[] | "- #\(.number) \(.title)"')
+
+          # Gather all merged PRs referencing the parent
+          MERGED_PRS=$(gh pr list --repo "$REPO" --state merged \
+            --search "\"Part of #${PARENT_ISSUE}\"" \
+            --json number,title --jq '.[] | "- #\(.number) \(.title)"')
+
+          SUMMARY="✅ **Loop complete for tracking issue #${PARENT_ISSUE}**
+
+          ### Closed Issues
+          ${CLOSED_ISSUES:-_None_}
+
+          ### Merged PRs
+          ${MERGED_PRS:-_None_}
+          "
+
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$SUMMARY"
+          gh issue edit "$PARENT_ISSUE" --repo "$REPO" --add-label "loop:complete"
+          echo "Labeled tracking issue #${PARENT_ISSUE} as loop:complete"

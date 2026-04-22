@@ -1,0 +1,84 @@
+name: Nightly Backlog Check
+
+on:
+  schedule:
+    - cron: '0 7 * * 1-5'  # 7am UTC weekdays
+  workflow_dispatch: {}     # Allow manual trigger
+
+jobs:
+  seed-loop:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Process pending backlog topics
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          BACKLOG="docs/requirements/backlog.md"
+          if [ ! -f "$BACKLOG" ]; then
+            echo "Backlog file not found — nothing to process."
+            exit 0
+          fi
+
+          DEFAULT_BRANCH=$(gh repo view "$REPO" --json defaultBranchRef --jq '.defaultBranchRef.name')
+          PROCESSED=0
+          MAX_PER_RUN=3
+
+          # Read the backlog file line by line, skip header rows
+          while IFS='|' read -r _ topic requirements techstack status assigned notes _; do
+            # Trim whitespace
+            topic=$(echo "$topic" | xargs)
+            requirements=$(echo "$requirements" | xargs)
+            techstack=$(echo "$techstack" | xargs)
+            status=$(echo "$status" | xargs)
+            assigned=$(echo "$assigned" | xargs)
+
+            # Skip non-pending or already-assigned rows
+            if [ "$status" != "pending" ] || [ -n "$assigned" ]; then
+              continue
+            fi
+
+            if [ "$PROCESSED" -ge "$MAX_PER_RUN" ]; then
+              echo "Reached max $MAX_PER_RUN topics per run — stopping."
+              break
+            fi
+
+            BODY="## Feature Request
+
+          **Topic Name:** ${topic}
+          **Requirements:** ${requirements}
+          **Tech Stack:** ${techstack}
+
+          ---
+          _Auto-created by nightly backlog check._"
+
+            gh issue create --repo "$REPO" \
+              --title "Planner: Process topic ${topic}" \
+              --body "$BODY" \
+              --label "agent:planner"
+
+            # Update the backlog row in-place
+            sed -i "s/| ${topic} |.*| pending |  |/| ${topic} | ${requirements} | ${techstack} | in-progress | ${DEFAULT_BRANCH} | |/" "$BACKLOG"
+
+            PROCESSED=$((PROCESSED + 1))
+            echo "Created issue for topic: ${topic}"
+          done < "$BACKLOG"
+
+          if [ "$PROCESSED" -gt 0 ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add "$BACKLOG"
+            git commit -m "chore: mark topics in-progress [skip ci]"
+            git push
+            echo "Committed backlog updates for ${PROCESSED} topics."
+          else
+            echo "No pending topics found."
+          fi

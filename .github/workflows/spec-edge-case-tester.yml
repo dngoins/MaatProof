@@ -1,0 +1,63 @@
+name: Spec Edge Case Tester
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: spec-edge-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  test-specs:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'agent:spec-edge-test')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Spec Edge Case Tester via Claude Code CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          SYSTEM_PROMPT=$(cat .github/agents/spec-edge-case-tester-agent.md)
+
+          PROMPT="You are the Spec Edge Case Tester Agent. Test the specs for this issue:
+
+          Title: ${ISSUE_TITLE}
+          Body:
+          ${ISSUE_BODY}
+
+          Repository: ${REPO}
+          Issue number: ${ISSUE_NUMBER}
+
+          Instructions:
+          1. Read all spec and doc files in the repository (CONSTITUTION.md, docs/, etc.).
+          2. Generate edge case scenarios relevant to this issue's requirements.
+          3. Run each scenario against the specs following your persona phases.
+          4. For any gaps found:
+             - If the fix is straightforward, edit the spec file directly, commit, and push.
+             - If the fix is complex, create a GitHub Issue with label 'role:architect'.
+          5. Calculate coverage. If coverage >= 90%:
+             - Post a comment on issue #${ISSUE_NUMBER}: '✅ Spec coverage: {N}% — specs validated. Ready for cost estimation.'
+             - Remove the label 'agent:spec-edge-test' from issue #${ISSUE_NUMBER}.
+             - Add the label 'spec:passed' to issue #${ISSUE_NUMBER}.
+             - Add the label 'agent:cost-estimator' to issue #${ISSUE_NUMBER} to trigger the Cost Estimator Agent.
+          6. If coverage < 90%:
+             - Post a comment listing all gaps and their severity.
+             - Keep the 'agent:spec-edge-test' label (orchestrator will re-trigger after fixes).
+             - Do NOT add 'agent:cost-estimator' — the issue is blocked until specs pass.
+
+          Use gh CLI for all GitHub operations. Use git for any spec file commits.
+          Commit message format: 'fix(spec): address EDGE-{NNN} — {description} [skip ci]'
+          "
+
+          claude --system-prompt "$SYSTEM_PROMPT" "$PROMPT"

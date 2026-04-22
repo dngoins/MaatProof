@@ -1,0 +1,61 @@
+name: PR Review Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Identify changed files
+        id: changes
+        run: |
+          CHANGED=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD || true)
+          echo "files<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Run Review Agent via Claude Code CLI
+        if: steps.changes.outputs.files != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          CHANGED_FILES: ${{ steps.changes.outputs.files }}
+        run: |
+          SYSTEM_PROMPT=$(cat .github/agents/developer-agent.md)
+
+          PROMPT="You are the PR Review Agent (Mode 2). Review this pull request.
+
+          PR #${PR_NUMBER} in ${REPO}
+          Changed files:
+          ${CHANGED_FILES}
+
+          Instructions:
+          1. Read each changed file.
+          2. Score the PR on the 10-dimension rubric from your persona.
+          3. Post the score table as a PR comment using:
+             gh pr comment ${PR_NUMBER} --repo ${REPO} --body '...'
+          4. If any dimension scores below 7, also post a 'request changes' comment listing specific gaps:
+             gh pr review ${PR_NUMBER} --repo ${REPO} --request-changes --body '...'
+          5. If all dimensions score 8 or above, label the PR:
+             gh pr edit ${PR_NUMBER} --repo ${REPO} --add-label 'review:passed'
+          6. Do NOT auto-merge. Leave final approval to the human reviewer.
+          "
+
+          claude --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+
+      - name: Skip — no files changed
+        if: steps.changes.outputs.files == ''
+        run: echo "No files changed — skipping review."

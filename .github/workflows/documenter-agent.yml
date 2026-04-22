@@ -1,0 +1,60 @@
+name: Documenter Agent
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: documenter-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  update-docs:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'agent:documenter')
+      && contains(github.event.issue.labels.*.name, 'qa:passed')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Documenter Agent via Claude Code CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          SYSTEM_PROMPT=$(cat .github/agents/documenter-agent.md)
+
+          PROMPT="You are the Documenter Agent. Update documentation for this issue:
+
+          Title: ${ISSUE_TITLE}
+          Body:
+          ${ISSUE_BODY}
+
+          Repository: ${REPO}
+          Issue number: ${ISSUE_NUMBER}
+
+          Instructions:
+          1. Read all recent merged PRs and changed files since the last release tag.
+          2. Compare documentation against the current code.
+          3. Update any stale or missing documentation directly.
+          4. Update or create CHANGELOG.md with new entries.
+          5. Commit all documentation changes.
+          6. Post a documentation update report as a comment on issue #${ISSUE_NUMBER}.
+          7. Add the label 'docs:updated' to issue #${ISSUE_NUMBER}.
+          8. Add the label 'agent:release' to issue #${ISSUE_NUMBER} to trigger the Release Agent.
+
+          Use gh CLI for GitHub operations. Use git to commit doc changes.
+          Commit message format: 'docs: update for ${ISSUE_TITLE} [skip ci]'
+          "
+
+          claude --system-prompt "$SYSTEM_PROMPT" "$PROMPT"

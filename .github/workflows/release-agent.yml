@@ -1,0 +1,60 @@
+name: Release Agent
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: release-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'agent:release')
+      && contains(github.event.issue.labels.*.name, 'docs:updated')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Release Agent via Claude Code CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          SYSTEM_PROMPT=$(cat .github/agents/release-agent.md)
+
+          PROMPT="You are the Release Agent. Prepare a release for this issue:
+
+          Title: ${ISSUE_TITLE}
+          Body:
+          ${ISSUE_BODY}
+
+          Repository: ${REPO}
+          Issue number: ${ISSUE_NUMBER}
+
+          Instructions:
+          1. Run the pre-release checklist from your persona. If any item fails, post a comment and stop.
+          2. Determine the next semantic version by reading the latest git tag.
+          3. Generate release notes from CHANGELOG.md and merged PRs.
+          4. Create a git tag and GitHub Release using the gh CLI.
+          5. If build artifacts exist (dist/, build/), attach them to the release.
+          6. Post a release report comment on issue #${ISSUE_NUMBER}.
+          7. Label the tracking issue 'loop:complete'.
+          8. Close the tracking issue.
+
+          Use gh CLI for all GitHub operations.
+          Commit message for version bumps: 'chore(release): bump to v{VERSION} [skip ci]'
+          "
+
+          claude --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
