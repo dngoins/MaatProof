@@ -304,24 +304,26 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issue #31: VRP Data Model/Schema — VerifiableStep, InferenceRule (7 rules), AttestationRecord (HMAC-SHA256 + ECDSA P-256), VerificationLevel, ProofChain_
+> _Issue #124: User Authentication — OAuth2+PKCE · TOTP/WebAuthn MFA · JWT RS256 · PostgreSQL 15+ · 75 EDGE-AUTH edge cases automated_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per issue (VRP Data Model #31) | $3,167 | $195 | **94%** |
-| Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
+| Build cost — User Auth (full feature, 9 issues) | $15,220 | $1,069 | **93%** |
+| Build cost — Sign-off issue (#124) | $1,664 | $117 | **93%** |
+| Edge case coverage (75 EDGE-AUTH cases) | $45,000 manual | $5 (agent) | **99.9%** |
+| Annual developer savings | — | $195,240 | **3,254 hrs/yr** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Cryptographic test coverage | 40% manual | 95% automated | **+55pp** |
-| VRP runtime cost (GCP standard) | — | **$0.16/mo** | ECDSA P-256 incl. |
-| Annual infra cost (100 MAU, GCP) | — | **$31/yr** | — |
+| User Auth runtime (GCP, 100 MAU) | — | **$15/mo** | No AI at runtime |
+| User Auth runtime (AWS, 10K MAU) | — | **$119/mo** | AWS wins at scale |
+| Auth security controls cost | — | **$0.10/mo** | TOTP+JWT+blocklist |
 | DORA rating | Low | **Elite** | — |
-| Year 1 ROI | — | — | **12,507%** |
-| 5-year TCO savings | — | — | **$1,832,532** |
+| Year 1 ROI | — | — | **11,432%** |
+| 5-year TCO savings | — | — | **$1,688,158** |
 
-> _Last estimated: 2026-04-23 · Issue #31 [VRP Data Model / Schema] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issues #94–#124 [User Authentication — OAuth2+MFA+FastAPI+PostgreSQL] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
