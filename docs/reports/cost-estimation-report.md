@@ -133,7 +133,7 @@ This report analyzes the total cost of ownership for MaatProof ACI/ACD implement
 
 | Parameter | Value |
 |-----------|-------|
-| Senior developer fully-loaded hourly rate | $60/hr (BLS median $120K/yr ÷ 2,080 hrs × 2× loaded) |
+| Senior developer / architect fully-loaded hourly rate | $60/hr (BLS median $120K/yr ÷ 2,080 hrs × 2× loaded) |
 | Mid-level developer rate | $45/hr |
 | QA engineer rate | $45/hr |
 | Technical writer rate | $40/hr |
@@ -225,6 +225,8 @@ Issue #127 creates the GitHub Actions CI/CD workflow that enforces determinism o
 
 ## 3. Runtime Cost Estimation
 
+> **Issue #138 runtime note:** Documentation changes have zero direct runtime infrastructure cost. This section covers the cumulative runtime cost of the full MaatProof stack that the documentation describes — so developers and stakeholders can understand the system they are documenting.
+
 ### 3.1 Infrastructure Architecture
 
 **Issue #14 (Data Model):** Embedded in every ACI/ACD pipeline invocation. Primary runtime cost: AuditEntry Firestore writes.
@@ -266,6 +268,7 @@ Issue #127 creates the GitHub Actions CI/CD workflow that enforces determinism o
 |----------|-------|-----|-----|
 | **Serverless compute** (1M proofs/mo) | **$0.00** (free tier) | **$0.00** (free tier) | **$0.00** (free tier) |
 | **OrchestratingAgent container** (0.25 vCPU, 512MB, 16hr/day) | **$2.08/mo** | **$2.23/mo** | **$1.73/mo** |
+| **ADA scoring** (in-process, absorbed in container) | **$0.00** | **$0.00** | **$0.00** |
 | **Database** (Firestore: 150K writes + 300K reads/mo) | Cosmos DB: **$8.20/mo** | DynamoDB: **$0.26/mo** | Firestore: **$0.11/mo** |
 | **Storage** (5 GB + ops) | **$0.09/mo** | **$0.12/mo** | **$0.10/mo** |
 | **CI/CD — GitHub Actions** (12,000 min/mo; 2K free) | **$80.00/mo** (private) / **$0** (public) | GitHub-hosted | GitHub-hosted |
@@ -307,6 +310,7 @@ Issue #127 creates the GitHub Actions CI/CD workflow that enforces determinism o
 |----------|------------------------|---------------|-----------------|
 | **Serverless compute** (30M invocations/mo) | **$5.42/mo** | **$5.61/mo** | **$10.80/mo** |
 | **OrchestratingAgent fleet** (10 vCPU, 20GB, 24/7) | **$312/mo** | **$358/mo** | **$259/mo** |
+| **ADA scoring fleet** (absorbed in OrchestratingAgent) | **$0.00** | **$0.00** | **$0.00** |
 | **Database** (15M writes + 30M reads/mo) | Cosmos DB: **$812/mo** | DynamoDB: **$26.25/mo** | Firestore: **$10.80/mo** |
 | **Storage** (500 GB/mo growth, ops) | **$9.00/mo** | **$11.50/mo** | **$10.00/mo** |
 | **CI/CD — GitHub Actions** (1,200,000 min/mo) | **$9,584/mo** (1,198K paid × $0.008) | N/A | N/A |
@@ -314,7 +318,7 @@ Issue #127 creates the GitHub Actions CI/CD workflow that enforces determinism o
 | **CI/CD — CodeBuild** (1,200,000 min/mo; 100 free) | N/A | **$5,995/mo** | N/A |
 | **Smoke-test LLM API** (10K calls/day × 1.5K tokens) | **$2,250/mo** | **$2,250/mo** | **$2,250/mo** |
 | **Monitoring / logs** (200 GB/mo) | **$552/mo** | **$100/mo** | **$2,048/mo** |
-| **Key Vault / Secrets** (1M ops/mo) | **$3.00/mo** | **$45.00/mo** | **$3.00/mo** |
+| **Key Vault / Secrets** (RollbackProof: 200 signs/day, ~6,000/mo + ops) | **$3.00/mo** | **$45.00/mo** | **$3.00/mo** |
 | **Networking** (100 GB egress/mo) | **$8.70/mo** | **$9.00/mo** | **$8.50/mo** |
 | **AI API** (Claude Sonnet, 15K pipeline calls/day × 6K tokens) | **$2,700/mo** | **$2,700/mo** | **$2,700/mo** |
 | **TOTAL/month** | **$16,236/mo** | **$11,500/mo** | **$8,889/mo** |
@@ -420,7 +424,25 @@ The DRE CI/CD Workflow adds automated enforcement of determinism invariants that
 | Team | $8.20 | $9.00 | $1.50 | $18.70 | **$180.30 (91%)** |
 | Enterprise | $35 (in-process gates) | $50 | $15.00 | $100 | **$1,399 (93%)** |
 
-### 5.3 Monthly Revenue Projections
+| Tier | Max Authority Level | ADA Score Threshold | MAAT Stake Required |
+|------|--------------------|--------------------|---------------------|
+| **Free** | `DEV_AUTONOMOUS` | ≥ 0.40 | 100 $MAAT |
+| **Pro** | `STAGING_AUTONOMOUS` | ≥ 0.60 | 1,000 $MAAT |
+| **Team** | `AUTONOMOUS_WITH_MONITORING` | ≥ 0.75 | 10,000 $MAAT |
+| **Enterprise** | `FULL_AUTONOMOUS` | ≥ 0.90 (+ DAO vote) | Custom |
+
+This natural mapping makes the pricing model defensible and aligns economic incentives with protocol safety.
+
+### 5.3 Cost to Serve Per Tier
+
+| Tier | Infra Cost/Customer/mo | AI API Cost/mo | Total Cost/mo | Gross Margin |
+|------|------------------------|----------------|---------------|--------------|
+| Free | $0.03 (GCP free tier) | $0.10 (light usage) | $0.13 | N/A (acquisition) |
+| Pro | $2.06 (standard profile) | $2.25 | $4.31 | **$44.69 (91%)** |
+| Team | $8.20 | $9.00 | $17.20 | **$181.80 (91%)** |
+| Enterprise | $35 (in-process gates) | $50 | $85 | **$1,414 (94%)** |
+
+### 5.4 Monthly Revenue Projections
 
 | Month | Free | Pro | Team | Enterprise | MRR | ARR Run-Rate |
 |-------|------|-----|------|------------|-----|-------------|
@@ -429,7 +451,7 @@ The DRE CI/CD Workflow adds automated enforcement of determinism invariants that
 | Month 12 | 2,000 | 150 | 40 | 8 | **$27,302** | $327,624 |
 | Month 24 | 5,000 | 400 | 120 | 25 | **$80,955** | $971,460 |
 
-### 5.4 Break-Even Analysis
+### 5.5 Break-Even Analysis
 
 | Tier | Fixed overhead/mo | Break-even customers |
 |------|-------------------|----------------------|
@@ -582,7 +604,7 @@ The determinism smoke-test (`run canonical prompt twice → assert identical res
 
 ---
 
-## 10. Recommendations
+## 9. Recommendations
 
 ### Immediate (Issue #127)
 
@@ -627,6 +649,7 @@ The determinism smoke-test (`run canonical prompt twice → assert identical res
 | Anthropic Claude Sonnet Pricing | https://www.anthropic.com/pricing | 2026-04-23 |
 | GitHub Actions Pricing | https://docs.github.com/en/billing/managing-billing-for-github-actions | 2026-04-23 |
 | BLS OES Software Developers | https://www.bls.gov/oes/current/oes151252.htm | 2026-04-23 |
+| BLS OES Technical Writers | https://www.bls.gov/oes/current/oes273042.htm | 2026-04-23 |
 | DORA State of DevOps Report 2024 | https://dora.dev/research/2024/dora-report/ | 2026-04-23 |
 
 ---

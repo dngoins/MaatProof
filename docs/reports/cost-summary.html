@@ -10,7 +10,7 @@
       --bg: #0d1117;
       --surface: #161b22;
       --border: #30363d;
-      --text: #c9d1d9;
+      --text: #e6edf3;
       --muted: #8b949e;
       --accent: #58a6ff;
       --green: #3fb950;
@@ -24,7 +24,6 @@
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       line-height: 1.6;
-      padding: 2rem;
     }
     h1 { font-size: 2rem; color: var(--accent); margin-bottom: 0.25rem; }
     h2 { font-size: 1.25rem; color: var(--accent); margin: 2rem 0 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
@@ -211,11 +210,25 @@
       <h3>Annual Cost — Standard Profile (100 MAU, public repo) — All Issues Combined</h3>
       <canvas id="cloudStandardChart" height="220"></canvas>
     </div>
-    <div class="chart-card">
-      <h3>Annual Cost — Edge Case Profile (10K MAU, in-process gates)</h3>
-      <canvas id="cloudEdgeChart" height="220"></canvas>
+  </section>
+
+  <!-- Charts row 3 -->
+  <section>
+    <div class="chart-grid">
+      <div class="chart-card">
+        <h3>Annual Savings Breakdown (by Category)</h3>
+        <div class="chart-wrap">
+          <canvas id="adaSavingsChart"></canvas>
+        </div>
+      </div>
+      <div class="chart-card">
+        <h3>Issue #138: Build Cost per Acceptance Criterion (Traditional, $)</h3>
+        <div class="chart-wrap">
+          <canvas id="acChart"></canvas>
+        </div>
+      </div>
     </div>
-  </div>
+  </section>
 
   <!-- Build Costs -->
   <h2>ACI/ACD vs Traditional Build Costs</h2>
