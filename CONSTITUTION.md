@@ -95,16 +95,25 @@ entry.
 
 ## §5 — Agent Authority Limits
 
+<!-- Addresses EDGE-C035 — ADA / human-approval consistency fix -->
+
 | Action | Permitted | Notes |
 |--------|-----------|-------|
 | Fix failing tests | ✅ | With proof; max 3 retries before human escalation |
 | Write new tests | ✅ | With proof |
 | Code review | ✅ | With proof |
-| Deploy to staging | ✅ | With proof |
-| Deploy to production | ❌ | Human approval required (§3) |
+| Deploy to staging | ✅ | With proof + peer-verified attestation |
+| Deploy to production (ADA mode — default) | ✅ | All 7 ADA conditions satisfied (§8); no manual approval required. Authorized by cryptographic proof + 2/3 validator quorum. |
+| Deploy to production (non-ADA policy) | ❌ | Human approval required **only when** `require_human_approval` policy gate is explicitly declared in the Deployment Contract (§3). |
 | Override deterministic gate | ❌ | Constitutional violation (§2) |
 | Decide CVE acceptability | ❌ | Security gates are non-negotiable (§2) |
-| Rollback production | ✅ | With proof; human notified immediately |
+| Rollback production | ✅ | Autonomous via Runtime Guard with proof; human notified immediately |
+
+**Note**: The prior entry "Deploy to production ❌ Human approval required" was superseded by the
+ADA protocol (§3, §8). ADA is the **default** — cryptographic proof authorizes production
+deployment when all 7 conditions are met. Human approval is a policy opt-in for regulated
+workloads, not a universal gate. See `specs/ada-spec.md` for the full 7-condition model and
+`specs/vrp-cicd-spec.md` for CI/CD workflow enforcement.
 
 ---
 

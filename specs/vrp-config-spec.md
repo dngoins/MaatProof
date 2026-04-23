@@ -427,6 +427,47 @@ def validate_validator_endpoints(
 
 ---
 
+## Timeout Validation
+
+<!-- Addresses EDGE-C038, EDGE-C039 — timeout_seconds range validation -->
+
+```python
+TIMEOUT_MIN_SECONDS = 5
+TIMEOUT_MAX_SECONDS = 120
+
+def validate_timeout_seconds(timeout_seconds: int, environment: str) -> None:
+    """
+    Validate validators.timeout_seconds for the given environment.
+
+    Raises VRPConfigError with TIMEOUT_OUT_OF_RANGE if the value is outside [5, 120].
+
+    <!-- Addresses EDGE-C038, EDGE-C039 -->
+    """
+    if not isinstance(timeout_seconds, int) or isinstance(timeout_seconds, bool):
+        raise VRPConfigError(
+            f"validators.timeout_seconds must be an integer, "
+            f"got: {type(timeout_seconds).__name__} ({timeout_seconds!r})"
+        )
+    if timeout_seconds < TIMEOUT_MIN_SECONDS:
+        raise VRPConfigError(
+            f"validators.timeout_seconds={timeout_seconds} is below the minimum of "
+            f"{TIMEOUT_MIN_SECONDS}s. A timeout of 0 or negative would cause "
+            "immediate attestation failure. Use at least 5 seconds. "
+            "Error code: TIMEOUT_OUT_OF_RANGE"
+        )
+    if timeout_seconds > TIMEOUT_MAX_SECONDS:
+        raise VRPConfigError(
+            f"validators.timeout_seconds={timeout_seconds} exceeds the maximum of "
+            f"{TIMEOUT_MAX_SECONDS}s. Excessively long timeouts block CI pipelines. "
+            "Error code: TIMEOUT_OUT_OF_RANGE"
+        )
+```
+
+The `VRPConfig._validate()` method calls `validate_timeout_seconds()` after loading the
+`[validators]` section.
+
+---
+
 ## Quorum Threshold Validation
 
 <!-- Addresses EDGE-032, EDGE-033, EDGE-034, EDGE-035, EDGE-036 -->
@@ -935,7 +976,7 @@ validator roles violates the principle of least privilege.
 | Max validator endpoints | 100 | `validators.endpoints` | Practical limit; quorum math still applies |
 | Max endpoint URI length | 256 chars | `validators.endpoints[]` | Reject longer URIs |
 | Min validator endpoints | 1 / 2 / 3 | per environment | dev / staging / production |
-| Validator attestation timeout | 30s default | `validators.timeout_seconds` | Range: 5–120s |
+| Validator attestation timeout | 30s default | `validators.timeout_seconds` | Range: 5–120s; values outside this range are rejected with `TIMEOUT_OUT_OF_RANGE` |
 | Max signing_key_ref URI length | 512 chars | `signing.signing_key_ref` | Reject longer URIs |
 
 ---
@@ -1004,6 +1045,7 @@ The endpoint validator detects IPv6 literals without brackets and rejects them w
 | `FEATURE_FLAG_SECURITY_FIELD` | `VRPConfigError` | Security-critical field set under `[feature_flags]` |
 | `FEATURE_DRY_RUN_IN_PROD` | `VRPConfigError` | `enable_dry_run = true` in staging/production |
 | `ENV_VAR_OVERRIDE_REJECTED` | `VRPConfigError` | Attempted env var override of security-critical field |
+| `TIMEOUT_OUT_OF_RANGE` | `VRPConfigError` | `timeout_seconds` outside the valid range [5, 120] |
 | `IPFS_OUTAGE_FALLBACK` | N/A | Handled by vrp-data-model-spec.md §Persistence & Recovery |
 
 ---
