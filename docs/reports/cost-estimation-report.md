@@ -232,7 +232,6 @@ Issue #143 delivers a complete integration test suite covering six end-to-end sc
 | Configuration | $1,440 | $96 | $1,344 |
 | Unit Tests | $2,880 | $192 | $2,688 |
 | CI/CD Setup | $2,400 | $160 | $2,240 |
-| Documentation | $1,920 | $128 | $1,792 |
 | Validation | $2,400 | $160 | $2,240 |
 | **TOTAL (full feature)** | **$28,578** | **$1,597** | **$26,981 (94%)** |
 
@@ -303,7 +302,9 @@ Issue #143 delivers a complete integration test suite covering six end-to-end sc
 | Monthly active users | 10,000 |
 | Proof verifications/day | 1,000,000 |
 | Pipeline runs/day | 5,000 |
-| AI API calls/day | 15,000 |
+| DRE deployment decisions/day | 1,000 |
+| Models in DRE committee | 5 (scaled for higher assurance) |
+| AI API calls/day | 15,000 (pipeline) + 4,000 (DRE extra models) = 19,000 |
 | AuditEntry writes/day | ~500,000 |
 | Integration test CI runs/day | 30 (high-frequency commit volume) |
 | Storage growth/month | 500 GB |
@@ -534,7 +535,7 @@ Integration tests must verify the following constitutional invariants (from `CON
 
 ---
 
-## 8. Assumptions & Caveats
+## 9. Assumptions & Caveats
 
 1. **Developer rate**: $60/hr fully loaded (BLS median $120K/yr × 2 for overhead, benefits, management).
 2. **AI API tokens**: Claude Sonnet pricing ($3/M input, $15/M output) as of April 2026.
@@ -551,7 +552,7 @@ Integration tests must verify the following constitutional invariants (from `CON
 
 ---
 
-## 9. Recommendations
+## 10. Recommendations
 
 ### Immediate (Issue #143)
 
