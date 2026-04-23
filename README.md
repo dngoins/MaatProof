@@ -164,7 +164,7 @@ graph LR
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
 | DORA rating | Low | **Elite** | — |
 
-> _Last estimated: 2026-04-22 | [Full cost report →](docs/reports/cost-estimation-report.md)_
+> _Last estimated: 2026-04-23 | [Full cost report →](docs/reports/cost-estimation-report.md)_
 
 ---
 
@@ -254,7 +254,7 @@ See [CLAUDE.md](CLAUDE.md) for agent session instructions and the full label tax
 | 5-year TCO | $1,521,960 | $14,124 | **$1,507,836** |
 | ROI (Year 1) | — | — | **12,433%** |
 
-> _Last estimated: 2026-04-22 · Issue #14 [ACI/ACD Engine] Data Model/Schema_
+> _Last estimated: 2026-04-23 · Issue #14 [ACI/ACD Engine] Data Model/Schema_
 > [Full report](docs/reports/cost-estimation-report.md) · [Interactive charts](docs/reports/cost-summary.html)
 
 ---
