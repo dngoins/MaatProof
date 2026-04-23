@@ -30,7 +30,7 @@ The protocol stack is built in **Rust** (consensus engine, AVM, DRE, VRP, ADA), 
 | **PoD Consensus** | Two-layer: DRE model committee + validator stake-weighted quorum (Rust / gRPC) |
 | **$MAAT** | Staking, slashing, validator incentives, DAO governance (Solidity) |
 | **ReasoningProof** | Signed, hash-chained reasoning artifacts (Python orchestration layer) |
-| **OrchestratingAgent** | Event-driven coordination of deterministic + agent layers (Node.js) |
+| **OrchestratingAgent** | Event-driven ACI/ACD pipeline coordination (Node.js) |
 
 ## Status
 
@@ -40,9 +40,11 @@ The protocol stack is built in **Rust** (consensus engine, AVM, DRE, VRP, ADA), 
 
 ---
 
-## Architecture: The Hybrid ACI/ACD Model
+## Architecture
 
-The honest answer is that **hybrid is right** — for now. Agents orchestrate above a deterministic trust anchor. The agent decides; the pipeline executes with cryptographic receipts.
+MaatProof operates as a fully autonomous ACI/ACD system. Agents propose, DRE verifies, VRP records reasoning, ADA authorizes, and the chain finalizes — no external CI/CD pipeline required.
+
+### Full Protocol Stack
 
 ### Full Protocol Stack
 
@@ -92,45 +94,50 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    OA["🤖 ORCHESTRATING AGENT\nmonitors · decides · fixes · coordinates"]
+    Agent["🤖 Agent\n(Node.js)"]
+    Contract["📜 Deployment\nContract\n(Solidity)"]
+    AVM["⚙️ AVM\n(Rust/WASM)"]
+    DRE["🧠 DRE\n(Rust)"]
+    VRP["🔍 VRP\n(Rust)"]
+    ADA["🔐 ADA\n(Rust)"]
+    PoD["🗳 PoD Consensus\n(Rust/gRPC)"]
+    Chain["⛓ Chain\n(Rust)"]
+    Prod["🚀 Production"]
 
-    OA --> DL
-    OA --> AL
-
-    subgraph DL["DETERMINISTIC LAYER (Trust Anchor)"]
-        D1[Lint]
-        D2[Compile]
-        D3[Security scan]
-        D4[Artifact signing]
-        D5[Compliance gates]
-        D6[Reproducible build]
-    end
-
-    subgraph AL["AGENT LAYER (Lives Above CI)"]
-        A1[Fix failing tests]
-        A2[Write new tests]
-        A3[Code review]
-        A4[Deployment decisions]
-        A5[Rollback reasoning]
-        A6[Issue triage]
-    end
+    Agent --> Contract --> AVM --> DRE --> VRP --> ADA --> PoD --> Chain --> Prod
 ```
 
-**Keep deterministic CI for:**
-- Production artifacts (signed builds, SBOM)
-- Compliance requirements (SOC2, HIPAA audit trails)
-- Security gates — never let an agent decide "this CVE is fine"
-- The final deploy trigger (agent requests deploy; pipeline executes it)
+### Two-Layer Consensus
 
-**Replace with agents:**
-- Everything that currently requires a human to read a failure and decide what to do
-- PR review, test authoring, deployment scheduling
-- Incident response and rollback reasoning
+```mermaid
+flowchart TD
+    A["Agent submits PromptBundle + EvidenceBundle"] --> B
+
+    subgraph L1["Layer 1 — DRE Model Committee"]
+        B["N-of-M LLM instances (parallel)"]
+        B --> C["Normalize → DecisionTuple"]
+        C --> D{"≥ M quorum?"}
+        D -->|yes| E["CommitteeCertificate"]
+        D -->|no| F["Discard — agent retries"]
+    end
+
+    E --> G
+
+    subgraph L2["Layer 2 — Validator Committee"]
+        G["Validators receive ValidatorInputPackage"]
+        G --> H["Replay via pinned WASM checkers"]
+        H --> I["Verify VRP Merkle root + ADA conditions"]
+        I --> J{"2/3 supermajority?"}
+        J -->|yes| K["FINALIZED"]
+        J -->|dispute| L["Dispute path → governance"]
+        J -->|reject| M["REJECTED"]
+    end
+```
 
 ### The Orchestrating Agent Model
 
 ```python
-agent.on("code_pushed")      -> run_deterministic_gates()
+agent.on("code_pushed")      -> submit_to_avm()          # AVM validates policy + trace
 agent.on("test_failed")      -> fix_and_retry(max=3)
 agent.on("all_tests_pass")   -> deploy_to_staging()
 agent.on("staging_healthy")  -> submit_prompt_bundle()   # → DRE → VRP → ADA
@@ -201,7 +208,7 @@ graph LR
 |---|---|
 | **Non-determinism** | DRE: N-of-M committee quorum makes determinism a system property; VRP Merkle DAG makes every reasoning step auditable |
 | **Auditability gap** | ReasoningProof = signed artifact; VRP admissible reasoning is on-chain and verifiable |
-| **Blast radius** | Deterministic gates cannot be bypassed; ADA requires 7 conditions including zero blocking CVEs |
+| **Blast radius** | ADA requires 7 conditions including zero blocking CVEs; runtime guard auto-rolls back on any error spike |
 | **Runaway loops** | Bounded retries (max 3); runtime guard auto-rolls back on error spike |
 | **Rate limits** | Orchestrator monitors and re-triggers with max 15 retries per item |
 | **Security surface** | Agent authority limits in Constitution §5; dispute path prevents bad slashing |
