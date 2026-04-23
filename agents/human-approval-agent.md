@@ -2,30 +2,45 @@
 
 ## Overview
 
-The Human Approval Agent surfaces deployment requests to human key-holders and collects cryptographic approval signatures. Human approval in MaatProof is not a UI button click — it is a **signed Ed25519 attestation** recorded on-chain as a first-class protocol primitive.
+The Human Approval Agent surfaces deployment requests to human key-holders and collects
+cryptographic approval signatures. In the MaatProof protocol, human approval is a
+**policy-configurable gate** — not a universal mandate.
 
-**Implementation**: Node.js  
+The protocol default is the **Autonomous Deployment Authority (ADA)**. Human approval
+is invoked only when a Deployment Contract declares a `require_human_approval` rule
+(typically for regulated workloads, critical services, or first-time deployments).
+
+When human approval is required, it is a **signed Ed25519 attestation** recorded on-chain
+as a first-class policy gate — not a UI button click.
+
+**Implementation**: Node.js (orchestrator integration layer)  
+**Core authorization logic**: Rust (ADA conditions evaluated in AVM)  
 **Interfaces**: Web UI, Slack/Teams bot, CLI  
-**On-chain record**: `HumanApproval` transaction with signature  
+**On-chain record**: `HumanApproval` transaction with Ed25519 signature  
 
 ---
 
-## Core Principle: Approval as Cryptographic Attestation
+## When Human Approval Is Triggered
 
-When a human approves a deployment in MaatProof:
+```mermaid
+flowchart TD
+    A[ADA Authorization Attempt] --> B{Deployment Contract\nhas require_human_approval rule?}
+    B -->|No| C[ADA proceeds autonomously\nif all 7 conditions met]
+    B -->|Yes| D[Human Approval Agent\ninvoked as ADA policy gate]
+    D --> E{Human approves\nwithin SLA?}
+    E -->|Yes| F[HumanApproval tx\nrecorded on-chain]
+    F --> G[ADA resumes\nCondition 1 now satisfied]
+    G --> H[Deployment proceeds\nif remaining 6 ADA conditions met]
+    E -->|No / Reject| I[Deployment blocked\nRejection recorded on-chain]
+```
 
-1. They receive a structured approval request containing: deployment ID, artifact hash, trace hash, policy ref, environment, and a human-readable summary
-2. They review the request (via UI, Slack, or CLI)
-3. They **sign the approval payload** with their Ed25519 private key (stored in their hardware wallet, YubiKey, or cloud KMS)
-4. The signature is submitted as a `HumanApproval` on-chain transaction
-5. The `human_approval_ref` (tx hash) is included in the deployment trace
-6. Validators verify the human approval signature before voting to finalize
-
-This creates a **non-repudiable, timestamped, on-chain record** of every human authorization.
+Workloads that typically declare `require_human_approval`:
+- Services classified as `CRITICAL` service tier
+- First deployment to a new environment
+- Regulated data processors (HIPAA, SOX, PCI-DSS)
+- Deployments that change the Deployment Contract itself
 
 ---
-
-## Approval Flow
 
 ```mermaid
 sequenceDiagram

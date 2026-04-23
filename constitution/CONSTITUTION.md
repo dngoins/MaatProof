@@ -38,11 +38,24 @@ Any spec file that describes a component, protocol, or process must include at l
 
 ---
 
-## Article II — Human Approval
+## Article II — Deployment Authorization
 
-**§2.1 — No autonomous agent may finalize a production deployment without a human approval attestation.**
+**§2.1 — ADA is the protocol default for production authorization.**
 
-Human approval is a first-class primitive in the MaatProof protocol, not an optional gate. This applies to all deployments regardless of agent confidence level.
+The Autonomous Deployment Authority (ADA) authorizes production deployments through
+cryptographic proof: DRE committee convergence, VRP checker validation, validator consensus,
+and runtime guard declaration. Human approval is **not** a universal protocol mandate.
+
+**§2.2 — Human approval is a policy-configurable gate.**
+
+A Deployment Contract may declare a `require_human_approval` rule for workloads that need it.
+When declared, a signed Ed25519 human attestation is required as one of the ADA policy gates.
+Regulated environments (SOC2, HIPAA, SOX) should declare this rule.
+
+**§2.3 — Autonomous authorization must produce a verifiable ADA record.**
+
+Every autonomous production deployment must emit a signed `AdaAuthorization` record stored
+on-chain, identifying which of the 7 conditions were verified and by whom. See [`specs/ada-spec.md`](../specs/ada-spec.md).
 
 ---
 
