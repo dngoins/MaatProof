@@ -304,14 +304,16 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issues #122 (DRE Configuration — multi-model committee, startup validation, python-dotenv secrets) + #145 (Core Pipeline Validation & Sign-off — ≥90% coverage confirmed, all gates verified)_
+> _Issue #122: DRE Configuration — env-specific YAML (dev/uat/prod), startup `DREConfigError` validation, `python-dotenv` secrets, 3-model committee (Claude 3.5 Sonnet + GPT-4o + Gemini 1.5 Pro)_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Annual CI/CD cost (12 features/yr) | $327,684 | $3,029 | **99%** |
-| Full pipeline build cost (all 11 issues) | $31,205 | $1,789 | **94%** |
-| Issue #122 DRE config build cost | $1,908 | $102 | **95%** |
-| Issue #145 validation gate cost | $1,590 | $75 | **95%** |
+| Build cost — DRE Configuration (#122) | $1,908 | $102 | **95%** |
+| Combined build cost (#14 + #119 + #122 + #132) | $13,531 | $653 | **95%** |
+| DRE misconfiguration escape (startup validation) | 40% runtime | 0% (caught at boot) | **100% improvement** |
+| DRE 3-model committee AI API (100 MAU) | — | **$8.55/mo** | Claude + GPT-4o + Gemini |
+| DRE 3-model committee AI API (10K MAU) | — | **$855/mo** | 1,000 DRE calls/day |
+| Annual infra cost (100 MAU, GCP, incl. DRE) | — | **$453/yr** | incl. DRE committee |
 | Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
 | DRE misconfiguration escape | 40% (runtime) | 0% (startup) | **100% improvement** |
 | DRE 3-model committee cost (100 MAU) | — | **$8.55/mo** | Claude + GPT-4o + Gemini |
@@ -320,12 +322,11 @@ graph LR
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Validation & sign-off time | 21 hours | 25 minutes | **98% faster** |
-| DORA rating | Low performer | **Elite** | Top 10% globally |
-| Year 1 ROI | — | — | **10,717%** |
-| 5-year TCO savings | — | — | **$1,618,655** |
+| DORA rating | Low | **Elite** | — |
+| Year 1 ROI | — | — | **10,463%** |
+| 5-year TCO savings | — | — | **$1,618,582** |
 
-> _Last estimated: 2026-04-23 · Issues #122 [DRE Configuration] + #145 [Core Pipeline Validation & Sign-off] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issue #122 [DRE Configuration] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)

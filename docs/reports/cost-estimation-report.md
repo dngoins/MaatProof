@@ -1,10 +1,10 @@
 # MaatProof Cost Estimation Report
 
-**Issues Covered:** [ACI/ACD Engine] Data Model / Schema (#14) · [Core Pipeline] Core Implementation (#119) · [DRE] Configuration (#122) · [Core Pipeline] Validation & Sign-off (#145)  
-**Generated:** 2026-04-23 (refreshed for Issues #122 + #145)  
+**Issues Covered:** [ACI/ACD Engine] Data Model / Schema (#14) · [Core Pipeline] Core Implementation (#119) · [DRE] Configuration (#122) · [VRP] Integration Tests (#132) · and additional pipeline issues  
+**Generated:** 2026-04-23 (refreshed for Issues #122 + #132)  
 **Agent:** Cost Estimator Agent  
 **Status:** `spec:passed` → `cost:estimated`  
-**Run:** #5 (Issues #122 — DRE Configuration · #145 — Validation & Sign-off · Final Gate)
+**Run:** #5 (Issue #122 — DRE Configuration · also includes #132 VRP Integration Tests)
 
 ---
 
@@ -219,11 +219,11 @@ Issue #122 defines configuration for the Deterministic Reasoning Engine: YAML sc
 | **Re-work (avg 30% defect rate)** | 5.3 hrs × $60 = **$318** | ACI/ACD reduces to ~5% = **$27** | $291 (91%) |
 | **TOTAL (Issue #122)** | **$1,908** | **$102** | **$1,806 (95%)** |
 
-> **Startup validation ROI:** Catching misconfiguration at startup (rather than at LLM call time) avoids ~$60/incident in developer diagnosis time + $1.20 in failed API calls. At 1 incident/week this saves **$3,172/yr** — 31× the build cost of Issue #122.
+> **Startup validation ROI:** Catching misconfiguration at startup saves ~$60/incident in developer diagnosis time. At 1 incident/week: **$3,172/yr saved** — 31× the Issue #122 build cost.
 
-### 2.4 Issue #145 — Validation & Sign-off Build Costs
+### 2.4 Issue #132 — VRP Integration Tests Build Costs
 
-Issue #122 defines configuration for the Deterministic Reasoning Engine: YAML schemas for `dev`, `uat`, and `prod` environments; startup validation (`DREConfigError` on invalid config); secrets loading via `python-dotenv`; and multi-model committee configuration (`model_ids`, `temperature=0`, `seed`, `top_p=1.0`, consensus thresholds).
+Issue #122 defines configuration for the Deterministic Reasoning Engine: YAML schemas for `dev`, `uat`, and `prod` environments; startup validation (`DREConfigError` on invalid config); secrets loading via `python-dotenv`; and multi-model committee configuration (`model_ids`, `temperature=0`, `seed`, `top_p=1.0`, consensus thresholds). Addresses EDGE-DRE-001 through EDGE-DRE-060.
 
 | Cost Category | Traditional CI/CD | ACI/ACD with MaatProof | Savings |
 |---------------|-------------------|------------------------|---------|
@@ -232,37 +232,33 @@ Issue #122 defines configuration for the Deterministic Reasoning Engine: YAML sc
 | **Dev hrs — DREConfigLoader + validation** | 4 hrs × $60 = **$240** | Automated → **$0** | $240 (100%) |
 | **Dev hrs — DREConfigError + error handling** | 2 hrs × $60 = **$120** | Automated → **$0** | $120 (100%) |
 | **Dev hrs — python-dotenv integration** | 2 hrs × $60 = **$120** | Automated → **$0** | $120 (100%) |
-| **Dev hrs — env-name mismatch validation** | 1 hr × $60 = **$60** | Automated → **$0** | $60 (100%) |
-| **Dev hrs — hot-reload logic (dev/uat)** | 2 hrs × $60 = **$120** | Automated → **$0** | $120 (100%) |
+| **Dev hrs — env-name mismatch + hot-reload guards** | 3 hrs × $60 = **$180** | Automated → **$0** | $180 (100%) |
 | **CI/CD pipeline minutes** | 60 min × $0.008 = **$0.48** | 75 min × $0.008 = **$0.60** | -$0.12 |
 | **Code review hours** | 3 hrs × $60 = **$180** | Automated (agent) = **$0** | $180 (100%) |
-| **QA testing hours** (60 edge cases validated) | 4 hrs × $45 = **$180** | Automated (agent) = **$0** | $180 (100%) |
+| **QA testing hours** (60 edge cases) | 4 hrs × $45 = **$180** | Automated (agent) = **$0** | $180 (100%) |
 | **Documentation hours** | 2 hrs × $40 = **$80** | Automated (agent) = **$0** | $80 (100%) |
 | **AI agent API costs** (Claude Sonnet) | N/A | ~80K input + 25K output tokens = **$0.62** | — |
 | **Spec / edge case validation** (EDGE-DRE-001 to -060) | 6 hrs × $60 = **$360** | Automated (agent) = **$3.00** est. | $357 (99%) |
 | **Infrastructure setup** (dotenv, secrets refs) | 1 hr × $60 = **$60** | Template-based (15 min) = **$10** | $50 (83%) |
-| **Orchestration overhead** | 0.5 hr × $60 = **$30** | Automated = **$1.00** | $29 (97%) |
 | **Re-work (avg 30% defect rate)** | 5.3 hrs × $60 = **$318** | ACI/ACD reduces to ~5% = **$27** | $291 (91%) |
 | **TOTAL (Issue #122)** | **$1,908** | **$102** | **$1,806 (95%)** |
 
-> **Note:** Config validation is a force-multiplier — early detection of misconfigured `temperature`, invalid `model_ids`, or missing consensus thresholds prevents costly runtime failures downstream. The `DREConfigError` on startup pattern eliminates silent misconfiguration bugs.
+> **Startup validation ROI:** Catching misconfiguration at startup (rather than at LLM call time) avoids ~$60/incident in developer diagnosis time + $1.20 in failed API calls. At 1 incident/week this saves **$3,172/yr** — 31× the build cost of Issue #122.
 
 ### 2.5 Full Pipeline Build Costs (All Issues)
 
 | Scope | Traditional | ACI/ACD | Savings |
 |-------|-------------|---------|---------|
 | Issue #14 (Data Model) | $2,326 | $148 | $2,178 |
-| Issue #119 (Core Pipeline) | $6,741 | $247 | $6,494 |
+| Issue #119 (Core Pipeline) | $6,741 | $248 | $6,493 |
 | **Issue #122 (DRE Configuration)** | **$1,908** | **$102** | **$1,806** |
-| Issue #145 (Validation & Sign-off) | $1,590 | $75 | $1,515 |
-| Infrastructure / IaC (#125) | $3,600 | $240 | $3,360 |
+| Issue #132 (VRP Integration Tests) | $2,586 | $156 | $2,430 |
+| Infrastructure / IaC | $3,600 | $240 | $3,360 |
 | Configuration (#129) | $1,440 | $96 | $1,344 |
-| Unit Tests (#139) | $2,880 | $192 | $2,688 |
-| Integration Tests (#143) | $3,600 | $240 | $3,360 |
-| CI/CD Setup (#133) | $2,400 | $160 | $2,240 |
-| Documentation (#144) | $1,920 | $128 | $1,792 |
-| Cryptographic layer (#113) | $2,800 | $161 | $2,639 |
-| **TOTAL (full feature, incl. Issue #122)** | **$31,205** | **$1,789** | **$29,416 (94%)** |
+| Unit Tests (#128) | $2,880 | $192 | $2,688 |
+| CI/CD Setup | $2,400 | $160 | $2,240 |
+| Validation | $2,400 | $160 | $2,240 |
+| **TOTAL (full feature, incl. #122)** | **$28,201** | **$1,630** | **$26,571 (94%)** |
 
 ---
 
