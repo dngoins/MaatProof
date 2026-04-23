@@ -79,26 +79,40 @@ sequenceDiagram
 
 ## Finalized Block Contents
 
-Each finalized block stores:
+Each finalized block stores the following as a Rust struct (serialized to JSON-LD on-chain):
 
-```json
-{
-  "block_height": 1042301,
-  "artifact_hash": "sha256:abc123...",
-  "trace_hash": "sha256:def456...",
-  "policy_ref": "0xDeployPolicyContractAddress",
-  "policy_version": 3,
-  "agent_id": "did:maat:agent:xyz789",
-  "validator_signatures": [
-    { "validator": "did:maat:validator:v1", "sig": "ed25519:..." },
-    { "validator": "did:maat:validator:v2", "sig": "ed25519:..." },
-    { "validator": "did:maat:validator:v3", "sig": "ed25519:..." }
-  ],
-  "timestamp": "2025-01-15T14:32:00Z",
-  "deploy_environment": "production",
-  "human_approval_ref": "0xApprovalTxHash"
+```rust
+/// Finalized deployment block written to the MaatProof chain.
+#[derive(Serialize, Deserialize)]
+pub struct MaatBlock {
+    pub block_height:           u64,
+    pub artifact_hash:          [u8; 32],        // SHA-256 of deployment artifact
+    pub reasoning_root:         [u8; 32],        // VRP Merkle root
+    pub trace_hash:             [u8; 32],        // SHA-256 of full JSON-LD trace
+    pub policy_ref:             [u8; 20],        // On-chain DeployPolicy address
+    pub policy_version:         u64,
+    pub agent_id:               String,          // did:maat:agent:<hex>
+    pub prompt_bundle_hash:     [u8; 32],        // DRE PromptBundle content address
+    pub committee_cert_hash:    [u8; 32],        // DRE CommitteeCertificate hash
+    pub ada_authorization:      AdaAuthorization, // ADA 7-condition record
+    pub validator_signatures:   Vec<ValidatorSig>,
+    pub timestamp:              u64,             // Unix milliseconds
+    pub deploy_environment:     String,
+    pub human_approval_ref:     Option<[u8; 32]>, // Present only if policy requires it
+    pub runtime_guard_hash:     [u8; 32],        // Rollback manifest hash
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ValidatorSig {
+    pub validator_did: String,
+    pub signature:     [u8; 64],  // Ed25519 over block_hash
+    pub stake_weight:  u64,
 }
 ```
+
+The `human_approval_ref` field is **optional** — present only when the Deployment Contract
+declares a `require_human_approval` policy rule. When ADA is the sole authority, the
+`ada_authorization` record carries full accountability.
 
 ---
 
@@ -152,7 +166,7 @@ Validators do not make subjective deployment decisions. They verify objective, d
 1. **Trace replay matches recorded output** — deterministic AVM re-execution
 2. **All policy rules evaluate to `true`** — checked against the on-chain contract
 3. **Agent identity is valid and sufficiently staked** — verified against on-chain identity
-4. **Human approval present** (if required by policy) — verified on-chain signature
-5. **Artifact hash matches** — hash of deployment artifact matches trace record
+4. **ADA authorization present** — signed `AdaAuthorization` with all 7 conditions verified; OR signed `HumanApproval` if the policy requires it
+5. **VRP reasoning root verified** — Merkle root recomputed and matches block
 
 A single failed check causes the validator to vote `REJECT`.

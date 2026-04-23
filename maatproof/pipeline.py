@@ -29,9 +29,11 @@ Architecture::
         │  • Reproducible build   │    │  • Issue triage         │
         └─────────────────────────┘    └─────────────────────────┘
 
-The one invariant that is **never** removed: human approval is always required
-before a production deployment.  This is the constitutional guarantee — see
-``CONSTITUTION.md``.
+The one invariant that governs production authorization: every production deployment must
+produce a signed `AdaAuthorization` or `HumanApproval` record on-chain — one of which
+must be present before the Production Gate unlocks. When `require_human_approval` is set
+in the Deployment Contract, both are required. When ADA is the sole authority, the
+`AdaAuthorization` alone is sufficient. See ``specs/ada-spec.md``.
 """
 
 from dataclasses import dataclass

@@ -36,25 +36,29 @@ deterministic layer.  Doing so is a constitutional violation.
 
 ---
 
-## §3 — Human Approval Invariant
+## §3 — Human Approval is a Policy Primitive
 
-**Human approval is always required before a production deployment.**
+**Human approval is a policy-configurable gate, not a universal protocol mandate.**
 
-This is the single invariant that must never be removed from the pipeline, even
-as agent capabilities improve.  The reason is not technical capability — agents
-can decide — but **accountability**: a human must be in the chain so that there
-is a named party responsible for every production change.
+The protocol default is the **Autonomous Deployment Authority (ADA)**: the agent proposes,
+cryptographic proof authorizes, the chain records, and the runtime guard can reverse.
+See [`specs/ada-spec.md`](specs/ada-spec.md) for the full 7-condition authorization model.
 
-The agent may:
-- Request a deployment and provide its signed reasoning proof.
-- Explain *why* it believes the deployment is safe.
-- Present the full audit trail of deterministic gate results.
+Human approval is available as a policy primitive for teams that need it:
+
+```solidity
+// Opt into human approval via Deployment Contract rule (not protocol mandate)
+rule require_human_approval: stage == PRODUCTION && serviceClass == "CRITICAL";
+```
+
+When a `require_human_approval` rule is declared, the Human Approval Agent is invoked
+as one of the ADA policy gates. Regulated workloads (SOX, HIPAA, SOC2) should declare
+this rule; standard workloads may rely on ADA alone.
 
 The agent may **not**:
-- Approve its own production deployment request.
-- Bypass this requirement under any circumstance, including emergency fixes.
-
-Emergency fixes follow the same path with an accelerated human-approval SLA.
+- Self-authorize a deployment that fails ADA conditions.
+- Override a `require_human_approval` policy gate declared in the Deployment Contract.
+- Bypass the deterministic layer gates defined in §2.
 
 ---
 
@@ -116,21 +120,24 @@ The audit log is the source of truth for compliance reviews.
 
 ---
 
-## §8 — Future: Full ACD
+## §8 — ADA Is the Default; Full ACD Is the Trajectory
 
-Full Agent-Continuous Deployment — dropping the deterministic pipeline
-entirely — becomes possible when both conditions are met:
+The **Autonomous Deployment Authority (ADA)** is already the protocol default.
+Production deployments are authorized by cryptographic proof — not by human approval —
+when all 7 ADA conditions are satisfied (DRE quorum, VRP checkers, validator consensus,
+risk score, security clearance, and runtime guard declaration).
 
-1. **LLMs have cryptographically verifiable, deterministic reasoning**: the
-   same prompt always produces the same reasoning chain, and that chain can be
-   independently verified without trusting the LLM provider.
+Full ACD — dropping the deterministic deterministic layer as well — becomes possible when:
 
-2. **The human-approval invariant is encoded in law or regulation** for the
-   relevant compliance domain, making the constitutional requirement
-   self-enforcing rather than policy-enforcing.
+1. **LLMs have cryptographically verifiable, deterministic reasoning**: the DRE + VRP
+   produce ZK-provable reasoning packages without requiring a multi-model committee.
+   (See roadmap Phase 5: ZK trace verification.)
 
-Until both conditions hold, the hybrid model described in this constitution is
-the responsible default.
+2. **Economic accountability fully replaces procedural control**: slashing conditions and
+   rollback proofs provide sufficient accountability without any deterministic pre-checks.
+
+Until condition 1 holds, the hybrid model (ADA above a deterministic trust anchor) is
+the responsible default. The DRE committee and validator consensus fill the gap.
 
 ---
 
