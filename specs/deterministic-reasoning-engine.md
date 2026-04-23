@@ -26,7 +26,9 @@ measured, and the result is encoded in a `DeterministicProof`.
 ```
 dre/
 ├── __init__.py
-└── models.py          # All data model types live here
+├── models.py          # All data model types (CanonicalPrompt, DeterminismParams, …)
+├── executor.py        # MultiModelExecutor — concurrent committee runner
+└── normalizer.py      # ResponseNormalizer — output canonicalisation
 ```
 
 All four primary types plus supporting enums/helpers are importable from a single
@@ -798,5 +800,416 @@ flowchart TD
 
 ---
 
+---
+
+## 10. `MultiModelExecutor` — Python Interface
+
+<!-- Addresses EDGE-DUT-025 through EDGE-DUT-035 (issue #131) -->
+
+The `MultiModelExecutor` encapsulates the Stage-2 committee execution logic from
+`specs/dre-spec.md §Stage 2 — Committee Execution`.  It dispatches a single
+`CanonicalPrompt` to `N` LLM models **concurrently** using `asyncio.gather`, collects
+`ModelResponse` objects, and ensures the `DeterminismParams` are forwarded to every
+model call.
+
+**Module**: `dre.executor`
+
+```python
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import re
+from dataclasses import dataclass, field
+from typing import Awaitable, Callable, List, Optional
+
+from dre.models import CanonicalPrompt, DeterminismParams, ModelResponse
+
+# Type alias for a coroutine that calls one LLM model.
+# Receives the model_id, the prompt bytes, and DeterminismParams;
+# returns the raw text response from the model.
+# The caller is responsible for mapping model_id → actual API client.
+LLMCallable = Callable[
+    [str, bytes, DeterminismParams],
+    Awaitable[str],
+]
+
+_MODEL_ID_PATTERN = re.compile(
+    r"^[a-zA-Z0-9_-]+/[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+$"
+)
+
+_EMPTY_HASH = hashlib.sha256(b"").hexdigest()  # SHA-256(b"") sentinel
+
+
+@dataclass
+class MultiModelExecutor:
+    """Concurrent multi-model LLM committee executor.
+
+    Attributes:
+        model_ids:    Non-empty list of canonical model identifiers in the
+            ``{provider}/{model}@{version}`` format.  Minimum 3 for uat/prod
+            (enforced by ``DREConfig``); minimum 1 for dev.
+        params:       ``DeterminismParams`` applied identically to ALL model
+            calls (temperature=0.0, top_p=1.0, fixed seed).
+        timeout_secs: Per-model wall-clock timeout in seconds.  Matches
+            ``specs/dre-spec.md §Execution Constraints`` (60 s default).
+            (See EDGE-DUT-026, EDGE-DUT-031.)
+    """
+
+    model_ids: List[str]
+    params: DeterminismParams
+    timeout_secs: float = 60.0
+
+    def __post_init__(self) -> None:
+        # Non-empty guard (EDGE-DUT-028)
+        if not self.model_ids:
+            raise ValueError("MultiModelExecutor.model_ids must not be empty")
+        # Positive timeout
+        if self.timeout_secs <= 0:
+            raise ValueError(
+                f"MultiModelExecutor.timeout_secs must be > 0, got {self.timeout_secs}"
+            )
+        # Each model_id must be canonical format (EDGE-DUT-029)
+        for mid in self.model_ids:
+            if mid is None or not _MODEL_ID_PATTERN.match(str(mid)):
+                raise ValueError(
+                    f"MultiModelExecutor.model_ids entry {mid!r} does not follow "
+                    "'{provider}/{model}@{version}' format"
+                )
+
+    async def execute(
+        self,
+        prompt: CanonicalPrompt,
+        llm_fn: LLMCallable,
+        normalize_fn: Optional[Callable[[str], str]] = None,
+    ) -> List[ModelResponse]:
+        """Execute *prompt* on every model concurrently and collect responses.
+
+        Args:
+            prompt:       The normalised ``CanonicalPrompt`` dispatched to all
+                models (same bytes for every call — EDGE-DUT-028).
+            llm_fn:       Async callable that performs a single LLM call.
+                Signature: ``async (model_id: str, prompt_bytes: bytes,
+                params: DeterminismParams) -> str``.
+                Should raise ``asyncio.TimeoutError`` when the provider
+                times out.  Any exception is caught internally.
+            normalize_fn: Optional normalization function applied to each
+                raw output.  Defaults to ``ResponseNormalizer.normalize``.
+                (See §11 below.)
+
+        Returns:
+            A ``List[ModelResponse]`` in the same order as ``self.model_ids``.
+            Models that timed out or raised an exception produce an **empty
+            sentinel** ``ModelResponse`` (raw_output="", normalized_output="",
+            response_hash=SHA-256(b"")).  These sentinels are counted in
+            ``ConsensusResult.total`` but not in ``ConsensusResult.agreements``.
+            (Denominator policy — EDGE-DUT-026, EDGE-DUT-031, EDGE-029 in spec.)
+
+        Concurrency contract (EDGE-DUT-035):
+            All model calls are issued concurrently via ``asyncio.gather(
+            return_exceptions=True)``.  A failure or timeout in one model
+            never cancels the others.
+
+        DeterminismParams enforcement (EDGE-DUT-029):
+            The same ``self.params`` object is forwarded to *llm_fn* for
+            every model.  Callers must use a mock that validates params to
+            test enforcement.
+        """
+        if normalize_fn is None:
+            from dre.normalizer import ResponseNormalizer
+            normalize_fn = ResponseNormalizer.normalize
+
+        async def _call_one(model_id: str) -> ModelResponse:
+            """Call a single model, returning an empty sentinel on failure."""
+            try:
+                raw = await asyncio.wait_for(
+                    llm_fn(model_id, prompt.content, self.params),
+                    timeout=self.timeout_secs,
+                )
+            except Exception:
+                # TimeoutError, connection error, API error — treat as empty
+                raw = ""
+
+            normalised = normalize_fn(raw)
+            response_hash = hashlib.sha256(
+                normalised.encode("utf-8")
+            ).hexdigest()
+            return ModelResponse(
+                model_id=model_id,
+                raw_output=raw,
+                normalized_output=normalised,
+                determinism_params=self.params,
+                response_hash=response_hash,
+            )
+
+        results = await asyncio.gather(
+            *[_call_one(mid) for mid in self.model_ids],
+            return_exceptions=False,  # exceptions caught inside _call_one
+        )
+        return list(results)
+```
+
+**Execution contract summary:**
+
+| Property | Specification |
+|---|---|
+| Concurrency | `asyncio.gather` — all models called in parallel (EDGE-DUT-035) |
+| Timeout | `asyncio.wait_for(timeout=self.timeout_secs)` per model (EDGE-DUT-026) |
+| Exception policy | Any exception → empty sentinel `ModelResponse` (EDGE-DUT-031) |
+| Denominator | Number of `model_ids` queried (including timed-out/failed) (EDGE-DUT-026) |
+| Prompt bytes | `prompt.content` forwarded identically to all calls (EDGE-DUT-028) |
+| Params | Same `DeterminismParams` instance forwarded to every call (EDGE-DUT-029) |
+| Return order | Same order as `self.model_ids` (EDGE-DUT-025) |
+| Minimum models | 1 (validated by `DREConfig`; executor itself requires only non-empty) |
+| Empty sentinel hash | `SHA-256(b"")` = `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+**Edge cases:**
+
+| Scenario | EDGE-DUT ID | Behaviour |
+|---|---|---|
+| All 3 models respond with identical output | EDGE-DUT-033 | `agreements=3, total=3, ratio=1.0 → STRONG` |
+| 2 of 3 models agree | EDGE-DUT-032 | `agreements=2, total=3, ratio=0.667 → MAJORITY` |
+| All 3 models return different outputs | EDGE-DUT-034 | `agreements=1, total=3, ratio=0.333 → NONE` |
+| 1 model times out | EDGE-DUT-026 | `agreements`, `total=3`; timed-out model: empty sentinel |
+| All models raise exceptions | EDGE-DUT-027 | All sentinels; `agreements=0, total=N → NONE` |
+| Single model (`N=1`) | EDGE-DUT-030 | Valid; `1/1=1.0 → STRONG` if model responds |
+
+---
+
+## 11. `ResponseNormalizer` — Python Interface
+
+<!-- Addresses EDGE-DUT-036 through EDGE-DUT-044 (issue #131) -->
+
+`ResponseNormalizer` converts raw LLM output into a canonical form where
+formatting-only differences are collapsed.  This ensures that two model
+responses that are *semantically identical* but formatted differently produce
+the same `response_hash` and count as "agreements" in `ConsensusResult`.
+
+**Module**: `dre.normalizer`
+
+```python
+from __future__ import annotations
+
+import ast
+import re
+
+
+class ResponseNormalizer:
+    """Canonicalise a raw LLM response string.
+
+    Normalisation pipeline (applied in order):
+
+    1. If input is empty or None, return empty string immediately.
+       ``response_hash`` for empty output = SHA-256(b"") (EDGE-DUT-041).
+    2. Strip leading and trailing whitespace from the entire response
+       (EDGE-DUT-036).
+    3. Normalise line endings: replace all ``\\r\\n`` and bare ``\\r`` with
+       ``\\n`` (EDGE-DUT-037).
+    4. Strip trailing whitespace from each line (EDGE-DUT-043).
+    5. Collapse runs of more than 2 consecutive blank lines to exactly
+       2 blank lines (EDGE-DUT-038).
+    6. For fenced Python code blocks (`` ```python … ``` ``), attempt
+       AST normalisation via ``ast.parse`` + ``ast.unparse``.
+       If ``ast.parse`` raises ``SyntaxError``, the original block is
+       preserved unchanged — normalisation MUST NOT change semantics
+       (EDGE-DUT-039, EDGE-DUT-040).
+    7. Non-Python fenced code blocks (`` ```js ``, `` ```yaml ``, etc.) are
+       **NOT** AST-normalised; they are preserved verbatim after steps 1–5
+       (EDGE-DUT-044).
+
+    Whitespace-only input (EDGE-DUT-042):
+        After step 2 (strip), if the remaining string is empty, return empty
+        string.  ``response_hash`` = SHA-256(b"").
+
+    The normaliser MUST NOT alter variable names, reorder logic, remove
+    comments, or make any other semantic change (EDGE-DUT-040).
+    """
+
+    @staticmethod
+    def normalize(raw_output: str) -> str:
+        """Normalise *raw_output* and return the canonical string.
+
+        Args:
+            raw_output: The verbatim text returned by an LLM call.
+                        ``None`` is coerced to empty string.
+
+        Returns:
+            The normalised string.  Empty input → empty string.
+        """
+        # Step 1: guard empty / None (EDGE-DUT-041, EDGE-DUT-042)
+        if not raw_output:
+            return ""
+
+        text: str = raw_output
+
+        # Step 2: strip outer whitespace (EDGE-DUT-036)
+        text = text.strip()
+        if not text:
+            return ""  # whitespace-only input (EDGE-DUT-042)
+
+        # Step 3: normalise line endings (EDGE-DUT-037)
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+        # Step 4: strip trailing whitespace per line (EDGE-DUT-043)
+        lines = [line.rstrip() for line in text.split("\n")]
+
+        # Step 5: collapse > 2 consecutive blank lines (EDGE-DUT-038)
+        out: list[str] = []
+        blank_run = 0
+        for line in lines:
+            if line == "":
+                blank_run += 1
+                if blank_run <= 2:
+                    out.append(line)
+            else:
+                blank_run = 0
+                out.append(line)
+        text = "\n".join(out)
+
+        # Step 6: AST-normalise fenced Python blocks (EDGE-DUT-039, EDGE-DUT-040)
+        text = ResponseNormalizer._normalise_python_blocks(text)
+
+        return text
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    _PYTHON_FENCE = re.compile(
+        r"(```python[ \t]*\n)(.*?)(```)",
+        re.DOTALL,
+    )
+
+    @staticmethod
+    def _normalise_python_blocks(text: str) -> str:
+        """AST-normalise every fenced ``python`` code block in *text*.
+
+        Only `` ```python `` fences are normalised (EDGE-DUT-044).
+        For each block:
+        - ``ast.parse`` the code; on ``SyntaxError`` keep original (EDGE-DUT-040).
+        - ``ast.unparse`` produces a canonical single-expression form.
+
+        This makes syntactically equivalent but differently-formatted Python
+        code produce identical normalised output (EDGE-DUT-039).
+        """
+
+        def _try_ast(match: re.Match) -> str:
+            open_fence: str = match.group(1)
+            code: str = match.group(2)
+            close_fence: str = match.group(3)
+            try:
+                tree = ast.parse(code)
+                normalised_code = ast.unparse(tree)
+                return open_fence + normalised_code + "\n" + close_fence
+            except SyntaxError:
+                # Preserve original on parse failure (EDGE-DUT-040)
+                return match.group(0)
+
+        return ResponseNormalizer._PYTHON_FENCE.sub(_try_ast, text)
+```
+
+**Normalisation rule table:**
+
+| Rule | Applied | Spec Reference |
+|---|---|---|
+| Strip outer whitespace | ✅ Yes | EDGE-DUT-036 |
+| Normalise `\r\n` / `\r` → `\n` | ✅ Yes | EDGE-DUT-037 |
+| Strip trailing whitespace per line | ✅ Yes | EDGE-DUT-043 |
+| Collapse > 2 blank lines | ✅ Yes | EDGE-DUT-038 |
+| AST normalise Python fences | ✅ Yes (best-effort) | EDGE-DUT-039 |
+| Preserve original on `SyntaxError` | ✅ Yes | EDGE-DUT-040 |
+| Non-Python code blocks unchanged | ✅ Yes | EDGE-DUT-044 |
+| Change variable names / logic | ❌ Never | Semantic invariant |
+| Re-parse JSON in prose | ❌ Never | Semantic invariant |
+| AST normalise non-Python fences | ❌ Never | EDGE-DUT-044 |
+
+**Whitespace-only input (EDGE-DUT-042):**
+
+```python
+ResponseNormalizer.normalize("   \n\t\n  ")
+# → ""   (strip() produces empty string → return "")
+# response_hash = SHA-256(b"") = e3b0c442...
+```
+
+**AST normalisation example (EDGE-DUT-039):**
+
+```
+Input code block:
+  def foo( x ):  return  x + 1
+
+After ast.parse + ast.unparse:
+  def foo(x):\n    return x + 1
+
+Both formatting variants produce the same response_hash.
+
+Note: ast.unparse does NOT make semantically different code equal.
+  "def foo(x): return x + 1"      (AST: return x + 1)
+  "def foo(x):\n    y=x+1; return y"  (AST: y=...; return y)
+These have different ASTs → different normalised output → different hash.
+```
+
+---
+
+## 12. `CanonicalPrompt` — Unit Test Clarifications
+
+<!-- Addresses EDGE-DUT-004, EDGE-DUT-014 (issue #131 AC clarification) -->
+
+The acceptance criterion for issue #131 states:
+
+> _"Unit tests for `CanonicalPromptSerializer`: verify identical hash for
+> key-order variants, Unicode NFC equivalents, and whitespace differences"_
+
+The following clarifications apply to the Python-layer unit tests:
+
+### 12.1 "Key-order variants"
+
+`CanonicalPrompt.from_str()` treats the prompt as an **opaque string**.  If a
+prompt happens to be valid JSON, the JSON keys are **not** re-parsed or
+re-sorted.  Two JSON-format prompts with different key orders will produce
+**different** hashes unless their string representations are byte-identical.
+
+The "sorted keys" canonicalisation in `specs/dre-spec.md §Stage 1` applies to
+the **Rust-layer `PromptBundle`** serialisation, not to the Python-layer prompt
+string.  Python-layer unit tests should verify that:
+
+- Two calls to `CanonicalPrompt.from_str()` with the **same string** always
+  return the **same** `prompt_hash` (determinism).
+- Two strings that differ only in JSON key order produce **different** hashes
+  (confirming that the prompt is treated as opaque — EDGE-DUT-014).
+
+```python
+# Determinism test (EDGE-DUT-001)
+p1 = CanonicalPrompt.from_str('{"b": 2, "a": 1}')
+p2 = CanonicalPrompt.from_str('{"b": 2, "a": 1}')
+assert p1.prompt_hash == p2.prompt_hash   # same string → same hash
+
+# Opaque-string test (EDGE-DUT-014)
+p3 = CanonicalPrompt.from_str('{"a": 1, "b": 2}')
+assert p1.prompt_hash != p3.prompt_hash   # different key order → different hash
+```
+
+### 12.2 "Whitespace differences"
+
+`CanonicalPrompt` normalization strips **control characters** (`< 0x20`
+except `\t`, `\n`, `\r`) but does **not** strip leading/trailing whitespace
+or collapse internal spaces.  Two prompts that differ only in leading/trailing
+whitespace will therefore produce **different** hashes.
+
+Unit tests should verify this explicitly:
+
+```python
+# Whitespace preserved → different hashes (EDGE-DUT-004)
+p_plain = CanonicalPrompt.from_str("deploy?")
+p_padded = CanonicalPrompt.from_str("  deploy?  ")
+assert p_plain.prompt_hash != p_padded.prompt_hash  # NOT equal — whitespace preserved
+```
+
+The only whitespace-related normalisation that produces **equal** hashes is
+Unicode-equivalent whitespace that is collapsed by NFC (e.g., U+00A0 → NFC
+form may be preserved as-is; NFC does not strip whitespace).
+
+---
+
 *Spec created to address issue #30 and referenced by issue #28.*  
+*Sections 10–12 added to address issue #131 (DRE Unit Tests).*  
 *References: `maatproof/proof.py`, `specs/llm-provider-spec.md`, `specs/avm-spec.md`, `specs/trace-verification-spec.md`, `docs/06-security-model.md`.*
