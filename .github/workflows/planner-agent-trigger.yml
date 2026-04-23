@@ -3,14 +3,21 @@ name: Planner Agent Trigger
 on:
   issues:
     types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to run the Planner Agent on'
+        required: true
+        type: string
 
 concurrency:
-  group: planner-${{ github.event.issue.number }}
+  group: planner-${{ github.event.issue.number || inputs.issue_number }}
   cancel-in-progress: false
 
 jobs:
   plan:
     if: >-
+      github.event_name == 'workflow_dispatch' ||
       contains(github.event.issue.labels.*.name, 'agent:planner')
     runs-on: ubuntu-latest
     permissions:
@@ -19,6 +26,32 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Resolve issue details
+        id: issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            NUM="${{ inputs.issue_number }}"
+            TITLE=$(gh issue view "$NUM" --repo "$REPO" --json title -q .title)
+            {
+              echo 'body<<ISSUE_EOF'
+              gh issue view "$NUM" --repo "$REPO" --json body -q .body
+              echo 'ISSUE_EOF'
+            } >> "$GITHUB_OUTPUT"
+          else
+            NUM="${{ github.event.issue.number }}"
+            TITLE="${{ github.event.issue.title }}"
+            {
+              echo 'body<<ISSUE_EOF'
+              echo "${{ github.event.issue.body }}"
+              echo 'ISSUE_EOF'
+            } >> "$GITHUB_OUTPUT"
+          fi
+          echo "number=$NUM" >> "$GITHUB_OUTPUT"
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
 
       - name: Install Claude Code CLI
         run: |
@@ -29,9 +62,9 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ steps.issue.outputs.body }}
+          ISSUE_NUMBER: ${{ steps.issue.outputs.number }}
+          ISSUE_TITLE: ${{ steps.issue.outputs.title }}
           REPO: ${{ github.repository }}
         run: |
           SYSTEM_PROMPT=$(cat .github/agents/planner-agent.md)
