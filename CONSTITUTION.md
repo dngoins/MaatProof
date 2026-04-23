@@ -34,6 +34,20 @@ agent, regardless of context:
 An agent **may not** short-circuit, skip, or override any gate in the
 deterministic layer.  Doing so is a constitutional violation.
 
+**Minimum gate requirement**: A `DeterministicLayer` with zero registered gates
+raises `GateFailureError` when invoked — an empty gate list is a configuration
+error, not a pass condition.  At minimum, every ACI/ACD pipeline MUST register the
+five required gates: `lint`, `compile`, `security_scan`, `artifact_sign`, and
+`compliance`.  See `specs/proof-chain-spec.md §4`.
+<!-- Addresses EDGE-119, EDGE-132 -->
+
+**Agent execution ordering**: The `DeterministicLayer` MUST execute before any
+`AgentLayer` gate for the same pipeline run.  The `OrchestratingAgent` tracks this
+invariant and raises `GateFailureError` if an agent gate is invoked before the
+deterministic layer has completed.  See `specs/proof-chain-spec.md §4 — Gate
+Execution Ordering`.
+<!-- Addresses EDGE-129 -->
+
 ---
 
 ## §3 — Human Approval is a Policy Primitive
@@ -115,12 +129,24 @@ its result is recorded as an [`AuditEntry`](maatproof/orchestrator.py) with:
 - A POSIX timestamp.
 - The result string.
 - Any metadata forwarded with the event.
+- An **HMAC-SHA256 signature** over the canonical JSON of the entry (signature field
+  excluded from the hash input).  See `specs/proof-chain-spec.md §7` for the signing
+  format. <!-- Addresses EDGE-153 -->
 
 The audit log is the source of truth for compliance reviews.
 
 For the full specification — including SQLite schema, tamper detection algorithm,
 HMAC key management, concurrency handling, retention policy, and compliance
 controls — see [`specs/audit-logging-spec.md`](specs/audit-logging-spec.md).
+
+**Immutability**: `get_audit_log()` returns a deep copy; callers cannot mutate
+the internal log.  See `specs/proof-chain-spec.md §7 — Audit Log Immutability`.
+<!-- Addresses EDGE-154 -->
+
+**Retention**: The in-memory log holds up to 10,000 entries (FIFO eviction).
+For compliance (SOX/HIPAA), entries must be persisted to the on-chain AVM layer.
+See `specs/proof-chain-spec.md §7 — Audit Log Retention and Size Limits`.
+<!-- Addresses EDGE-126, EDGE-155, EDGE-175 -->
 
 ---
 
