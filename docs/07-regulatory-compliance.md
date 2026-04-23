@@ -17,13 +17,13 @@ MaatProof's on-chain architecture provides **compliance artifacts by constructio
 | **Govern** | Deployment Contracts encode governance rules on-chain; DAO governance for protocol changes |
 | **Map** | Agent identity (DID) maps every action to a specific AI system |
 | **Measure** | Trace recording quantifies AI decision-making; policy evaluation is measurable |
-| **Manage** | Slashing provides automated consequence for harmful AI actions; human approval gates risk |
+| **Manage** | Slashing provides automated consequence for harmful AI actions; ADA 7-condition gate + optional human approval policy rule manages deployment risk |
 
 ### EU AI Act
 
 | EU AI Act Requirement | MaatProof Mechanism |
 |---|---|
-| Human oversight for high-risk AI | Human approval is a first-class protocol primitive — a signed cryptographic attestation |
+| Human oversight for high-risk AI | ADA 7-condition gate + optional `require_human_approval: stage == PRODUCTION` policy rule — human approval is a signed cryptographic attestation when required by policy |
 | Transparency & explainability | Full reasoning trace recorded by AVM, anchored to IPFS, hash on-chain |
 | Traceability | Every deployment has an immutable on-chain record with agent identity |
 | Accuracy & robustness | Policy rules encode minimum quality gates (test coverage, CVE checks) |

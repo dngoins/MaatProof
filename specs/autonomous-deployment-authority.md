@@ -20,13 +20,13 @@ cryptographic proof chain for every decision.
 **Hash precision**: All token amounts stored as `int` (wei), never `float`  
 **Float precision**: All score fields use Python `Decimal` for deterministic arithmetic
 
-> ### Constitutional Compatibility (CONSTITUTION §3 Amendment)
+> ### Constitutional Alignment (CONSTITUTION §3, as amended)
 >
-> CONSTITUTION §3 states: *"Human approval is always required before a production
-> deployment."*  ADA introduces `FULL_AUTONOMOUS` which, by design, executes production
-> deployments without per-deployment human approval.
+> CONSTITUTION §3 (amended) designates ADA as the **protocol default** for all deployment
+> decisions. Human approval is a **policy primitive** — one possible rule in a Deployment
+> Contract (`require_human_approval: stage == PRODUCTION`), not a universal protocol mandate.
 >
-> **Resolution**: ADA `FULL_AUTONOMOUS` is authorised for production only when ALL of the
+> ADA `FULL_AUTONOMOUS` is authorised for production only when ALL of the
 > following constitutional safeguards are satisfied:
 >
 > 1. The DAO has voted (≥60% supermajority, ≥10% quorum) to enable `FULL_AUTONOMOUS`
@@ -34,12 +34,10 @@ cryptographic proof chain for every decision.
 > 2. The deployment environment is **not** classified as HIPAA-regulated, SOX-regulated,
 >    or any compliance tier that explicitly requires named human accountability (see
 >    `docs/07-regulatory-compliance.md` §ADA Compliance Tiers).
-> 3. All five scoring signals are independently verified by the AVM — no self-reported
+> 3. All seven ADA conditions are independently verified by the AVM — no self-reported
 >    values are accepted (see §Signal Verification below).
-> 4. The on-chain `DeployPolicy` has `requireHumanApproval = false` (explicitly set by
->    the policy owner after DAO vote).
->
-> All other deployments continue to require human approval per §3.
+> 4. The on-chain `DeployPolicy` has no `require_human_approval` rule configured for this
+>    environment (the policy owner's explicit choice, recorded on-chain).
 >
 > <!-- Addresses EDGE-044, EDGE-074 -->
 
