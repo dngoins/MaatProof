@@ -1,0 +1,327 @@
+name: Development Agent
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: developer-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Branch A: Claude Sonnet ──
+  claude-sonnet:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'agent:developer')
+      && contains(github.event.issue.labels.*.name, 'cost:estimated')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+
+      - name: Implement via Claude Sonnet
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          REPO: ${{ github.repository }}
+          BRANCH_NAME: impl/${{ github.event.issue.number }}-claude-sonnet
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH_NAME"
+
+          SYSTEM_PROMPT=$(cat .github/agents/development-agent.md)
+
+          PROMPT="You are the Development Agent using Claude Sonnet. Implement the code for this issue:
+
+          Title: ${ISSUE_TITLE}
+          Body:
+          ${ISSUE_BODY}
+
+          Instructions:
+          1. Implement the deliverable described in the issue using the specified tech stack.
+          2. Add Big O complexity annotations as inline comments on every function.
+          3. Create a COMPLEXITY.md file summarizing algorithm choices, time/space complexity, and trade-offs.
+          4. Follow Constitution §13 naming conventions.
+          5. Stage and commit all files.
+          "
+
+          claude -p --dangerously-skip-permissions --model sonnet --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+
+          git add -A
+          git diff --cached --quiet || git commit -m "feat: implement ${ISSUE_TITLE} via Claude Sonnet"
+          git push origin "$BRANCH_NAME"
+
+          gh pr create --repo "$REPO" \
+            --head "$BRANCH_NAME" \
+            --title "[#${ISSUE_NUMBER}] ${ISSUE_TITLE} — Claude Sonnet" \
+            --body "## Implementation: Claude Sonnet
+
+          Part of #${ISSUE_NUMBER}
+
+          **Model:** Claude Sonnet
+          **Tool:** Claude Code CLI
+
+          _This is 1 of 4 competing implementations. See #${ISSUE_NUMBER} for the Judging Agent report._" \
+            --label "agent:developer" \
+            --label "impl:claude-sonnet"
+
+  # ── Branch B: Claude Opus ──
+  claude-opus:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'agent:developer')
+      && contains(github.event.issue.labels.*.name, 'cost:estimated')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+
+      - name: Implement via Claude Opus
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          REPO: ${{ github.repository }}
+          BRANCH_NAME: impl/${{ github.event.issue.number }}-claude-opus
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH_NAME"
+
+          SYSTEM_PROMPT=$(cat .github/agents/development-agent.md)
+
+          PROMPT="You are the Development Agent using Claude Opus. Implement the code for this issue:
+
+          Title: ${ISSUE_TITLE}
+          Body:
+          ${ISSUE_BODY}
+
+          Instructions:
+          1. Implement the deliverable described in the issue using the specified tech stack.
+          2. Add Big O complexity annotations as inline comments on every function.
+          3. Create a COMPLEXITY.md file summarizing algorithm choices, time/space complexity, and trade-offs.
+          4. Follow Constitution §13 naming conventions.
+          5. Stage and commit all files.
+          "
+
+          claude -p --dangerously-skip-permissions --model opus --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+
+          git add -A
+          git diff --cached --quiet || git commit -m "feat: implement ${ISSUE_TITLE} via Claude Opus"
+          git push origin "$BRANCH_NAME"
+
+          gh pr create --repo "$REPO" \
+            --head "$BRANCH_NAME" \
+            --title "[#${ISSUE_NUMBER}] ${ISSUE_TITLE} — Claude Opus" \
+            --body "## Implementation: Claude Opus
+
+          Part of #${ISSUE_NUMBER}
+
+          **Model:** Claude Opus
+          **Tool:** Claude Code CLI
+
+          _This is 1 of 4 competing implementations. See #${ISSUE_NUMBER} for the Judging Agent report._" \
+            --label "agent:developer" \
+            --label "impl:claude-opus"
+
+  # ── Branch C: GPT 5.3 Codex ──
+  gpt53-codex:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'agent:developer')
+      && contains(github.event.issue.labels.*.name, 'cost:estimated')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+
+      - name: Implement via GPT 5.3 Codex style
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          REPO: ${{ github.repository }}
+          BRANCH_NAME: impl/${{ github.event.issue.number }}-gpt53-codex
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH_NAME"
+
+          SYSTEM_PROMPT=$(cat .github/agents/development-agent.md)
+
+          PROMPT="You are the Development Agent implementing code in the style of GPT 5.3 Codex.
+          Prioritize: minimal code, maximum reuse of standard library, functional patterns where possible.
+
+          Implement the following issue:
+          Title: ${ISSUE_TITLE}
+          Body:
+          ${ISSUE_BODY}
+
+          Instructions:
+          1. Implement the deliverable using the specified tech stack.
+          2. Favor concise, functional-style code with list comprehensions and built-in functions.
+          3. Add Big O complexity annotations as inline comments on every function.
+          4. Create a COMPLEXITY.md file summarizing algorithm choices and trade-offs.
+          5. Follow Constitution naming conventions.
+          6. Stage and commit all files."
+
+          claude -p --dangerously-skip-permissions --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+
+          git add -A
+          git diff --cached --quiet || git commit -m "feat: implement ${ISSUE_TITLE} via GPT 5.3 Codex style"
+          git push origin "$BRANCH_NAME"
+
+          gh pr create --repo "$REPO" \
+            --head "$BRANCH_NAME" \
+            --title "[#${ISSUE_NUMBER}] ${ISSUE_TITLE} — GPT 5.3 Codex" \
+            --body "## Implementation: GPT 5.3 Codex
+
+          Part of #${ISSUE_NUMBER}
+
+          **Model:** GPT 5.3 Codex style (functional, minimal)
+          **Tool:** Claude Code CLI
+
+          _This is 1 of 4 competing implementations. See #${ISSUE_NUMBER} for the Judging Agent report._" \
+            --label "agent:developer" \
+            --label "impl:gpt53-codex"
+
+  # ── Branch D: GPT 5.4 ──
+  gpt54:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'agent:developer')
+      && contains(github.event.issue.labels.*.name, 'cost:estimated')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+
+      - name: Implement via GPT 5.4 style
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          REPO: ${{ github.repository }}
+          BRANCH_NAME: impl/${{ github.event.issue.number }}-gpt54
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH_NAME"
+
+          SYSTEM_PROMPT=$(cat .github/agents/development-agent.md)
+
+          PROMPT="You are the Development Agent implementing code in the style of GPT 5.4.
+          Prioritize: maximum type safety, defensive programming, verbose error messages, enterprise patterns.
+
+          Implement the following issue:
+          Title: ${ISSUE_TITLE}
+          Body:
+          ${ISSUE_BODY}
+
+          Instructions:
+          1. Implement the deliverable using the specified tech stack.
+          2. Favor defensive, enterprise-style code with explicit type checks and guard clauses.
+          3. Add Big O complexity annotations as inline comments on every function.
+          4. Create a COMPLEXITY.md file summarizing algorithm choices and trade-offs.
+          5. Follow Constitution naming conventions.
+          6. Stage and commit all files."
+
+          claude -p --dangerously-skip-permissions --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
+
+          git add -A
+          git diff --cached --quiet || git commit -m "feat: implement ${ISSUE_TITLE} via GPT 5.4 style"
+          git push origin "$BRANCH_NAME"
+
+          gh pr create --repo "$REPO" \
+            --head "$BRANCH_NAME" \
+            --title "[#${ISSUE_NUMBER}] ${ISSUE_TITLE} — GPT 5.4" \
+            --body "## Implementation: GPT 5.4
+
+          Part of #${ISSUE_NUMBER}
+
+          **Model:** GPT 5.4 style (defensive, enterprise)
+          **Tool:** Claude Code CLI
+
+          _This is 1 of 4 competing implementations. See #${ISSUE_NUMBER} for the Judging Agent report._" \
+            --label "agent:developer" \
+            --label "impl:gpt54"
+
+  # ── Notify: all 4 branches created ──
+  notify:
+    needs: [claude-sonnet, claude-opus, gpt53-codex, gpt54]
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Post summary and trigger judging
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # List all 4 PRs for this issue
+          PRS=$(gh pr list --repo "$REPO" --search "in:title [#${ISSUE_NUMBER}]" --json number,title,url \
+            --jq '.[] | "- [#\(.number)] \(.title) — \(.url)"')
+
+          gh issue comment "$ISSUE_NUMBER" --repo "$REPO" --body "## 🔨 Development Complete — 4 Implementations Ready
+
+          Four competing implementations have been created:
+
+          ${PRS}
+
+          The **Judging Agent** will now compare all implementations on:
+          - Algorithmic complexity (Big O)
+          - Code quality & design
+          - Cost efficiency
+          - Performance & security
+
+          Awaiting judgment report before human review.
+
+          ---
+          _Triggered by Development Agent_"
+
+          gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --add-label "dev:complete"
+          gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --add-label "agent:judge"

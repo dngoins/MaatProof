@@ -1,0 +1,67 @@
+name: Cost Estimator Agent
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: cost-estimator-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  estimate:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'agent:cost-estimator')
+      && contains(github.event.issue.labels.*.name, 'spec:passed')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: write
+      pages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+
+      - name: Run Cost Estimator Agent via Claude Code CLI
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          SYSTEM_PROMPT=$(cat .github/agents/cost-estimator-agent.md)
+
+          PROMPT="You are the Cost Estimator Agent. Generate a cost analysis for this issue:
+
+          Title: ${ISSUE_TITLE}
+          Body:
+          ${ISSUE_BODY}
+
+          Repository: ${REPO}
+          Issue number: ${ISSUE_NUMBER}
+
+          Instructions:
+          1. Read all spec and architecture docs in the repository.
+          2. Generate the full cost estimation report following your persona sections.
+          3. Save the full report to docs/reports/cost-estimation-report.md (create dirs if needed).
+          4. Create a GitHub Pages HTML summary at docs/reports/cost-summary.html with Chart.js charts.
+          5. Update README.md with a cost savings summary table and link to the full report.
+          6. Commit all changes with: 'docs(cost): update cost estimation report [skip ci]'
+          7. Push the commit.
+          8. Post a summary comment on issue #${ISSUE_NUMBER} with key findings.
+          9. Add label 'cost:estimated' to issue #${ISSUE_NUMBER}.
+          10. Add label 'agent:developer' to issue #${ISSUE_NUMBER} to trigger the Developer Agent.
+
+          Use gh CLI for GitHub operations. Use git for commits.
+          "
+
+          claude -p --dangerously-skip-permissions --system-prompt "$SYSTEM_PROMPT" "$PROMPT"

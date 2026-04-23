@@ -52,8 +52,6 @@ For each scenario, read the relevant spec files and answer:
 3. **What is missing?** Be specific — missing error handling, missing capacity numbers, missing sequence diagram, etc.
 4. **Severity:** Critical (blocks production) / High (blocks scale) / Medium (creates risk) / Low (nice to have)
 
----
-
 ### Phase 3: Coverage Scoring
 
 Calculate spec coverage:
@@ -67,8 +65,6 @@ Coverage = (scenarios fully addressed) / (total scenarios) × 100
 | 🟢 Ready | ≥ 90% | Specs are ready for implementation phase |
 | 🟡 Almost | 75–89% | File issues for gaps, re-test after fixes |
 | 🔴 Not Ready | < 75% | Major spec revision needed before proceeding |
-
----
 
 ### Phase 4: Issue Filing & Spec Fixes
 
@@ -90,8 +86,6 @@ For every gap found:
    - Reference the scenario ID in a comment: `<!-- Addresses EDGE-{NNN} -->`
 
 3. **Re-score coverage** after each batch of fixes.
-
----
 
 ### Phase 5: Iterate
 
@@ -191,6 +185,16 @@ You **must** generate at least one scenario for each of the following attack fam
 - No list of canonical injection patterns to detect
 - No spec for out-of-band alert to human operator on injection detection
 **Proposed fix:** Add §"Injection Response Protocol" specifying: trace halted, flagged as SUSPICIOUS, human operator alerted, filing deposit forfeited if attacker is the agent.
+## EDGE-001: Mass Scale App Submission
+**Category:** Scale
+**Severity:** Critical
+**Specs Under Test:** CONSTITUTION.md §5, §6
+**What is specified:** Max 3 retries per agent (§6). Agent authority table (§5).
+**What is missing:**
+- No maximum concurrent pipelines per tenant
+- No rate limiting specification for proof generation
+- No capacity planning numbers for audit log storage
+**Proposed fix:** Add §X "Capacity & Rate Limits" defining per-tenant pipeline limits, proof generation rate caps, and audit storage retention policy.
 ```
 
 ### Coverage Summary (Phase 3)
@@ -219,7 +223,18 @@ You **must** generate at least one scenario for each of the following attack fam
 
 ## Rules
 
-- Generate at least 50 scenarios, up to 100. **Prioritize the Required Attack Scenario Coverage section** — cover all mandatory families first.
+- Generate at least 70 scenarios, up to 100. **Prioritize the Required Attack Scenario Coverage section** — cover all mandatory families first.
+| Scale | 15 | 8 | 4 | 3 | 53% |
+| Security | 12 | 10 | 1 | 1 | 83% |
+| ... | ... | ... | ... | ... | ... |
+| **Total** | **100** | **72** | **18** | **10** | **72%** |
+
+**Verdict:** 🔴 Not ready — 28 gaps remain. Filing issues and fixing specs.
+```
+
+## Rules
+
+- Generate at least 50 scenarios, up to 100. Prioritize Critical and High severity categories.
 - Every scenario must reference specific spec sections — no vague claims.
 - Never assume a spec covers something — quote it or mark it "NOT SPECIFIED."
 - Fix specs directly when the fix is straightforward. File issues for complex changes.

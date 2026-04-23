@@ -1,0 +1,85 @@
+name: Judging Agent
+
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: judge-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  judge:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'agent:judge')
+      && contains(github.event.issue.labels.*.name, 'dev:complete')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch all implementation branches
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          git fetch origin "impl/${ISSUE_NUMBER}-claude-sonnet" || true
+          git fetch origin "impl/${ISSUE_NUMBER}-claude-opus" || true
+          git fetch origin "impl/${ISSUE_NUMBER}-gpt53-codex" || true
+          git fetch origin "impl/${ISSUE_NUMBER}-gpt54" || true
+
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude --version
+
+      - name: Run Judging Agent via Claude Code CLI
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          REPO: ${{ github.repository }}
+        run: |
+          SYSTEM_PROMPT=$(cat .github/agents/judging-agent.md)
+
+          # Get PR numbers for all 4 implementations
+          PR_LIST=$(gh pr list --repo "$REPO" --search "in:title [#${ISSUE_NUMBER}]" --json number,title,headRefName \
+            --jq '.[] | "\(.number)|\(.title)|\(.headRefName)"')
+
+          PROMPT="You are the Judging Agent. Evaluate the 4 competing implementations for this issue:
+
+          Title: ${ISSUE_TITLE}
+          Body:
+          ${ISSUE_BODY}
+
+          Repository: ${REPO}
+          Issue number: ${ISSUE_NUMBER}
+
+          The 4 implementation PRs:
+          ${PR_LIST}
+
+          Instructions:
+          1. For each PR, checkout its branch and read all changed files and COMPLEXITY.md.
+             Use: git diff main...origin/impl/${ISSUE_NUMBER}-{model} to see changes.
+          2. Read docs/reports/cost-estimation-report.md for cost context.
+          3. Score each implementation on the 6 weighted dimensions from your persona.
+          4. Compare Big O complexity for all critical operations across all 4 implementations.
+          5. Estimate monthly runtime costs for each at standard and edge-case load.
+          6. Produce the full comparison report from your persona output format.
+          7. Post the report as a comment on EACH of the 4 PRs using:
+             gh pr comment {PR_NUM} --repo ${REPO} --body '...'
+          8. Post the report on issue #${ISSUE_NUMBER}.
+          9. Add label 'judge:complete' to issue #${ISSUE_NUMBER}.
+          10. Recommend the winning implementation but DO NOT merge — wait for human.
+
+          Use gh CLI for all GitHub operations.
+          "
+
+          claude -p --dangerously-skip-permissions --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
