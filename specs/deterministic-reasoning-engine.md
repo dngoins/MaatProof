@@ -1,6 +1,7 @@
 # Deterministic Reasoning Engine (DRE) — Data Models Specification
 
 <!-- Addresses EDGE-001 through EDGE-040 (issue #30) -->
+<!-- Addresses EDGE-INT-002, EDGE-INT-006, EDGE-INT-023, EDGE-INT-025 (issue #134) -->
 
 ## Overview
 
@@ -293,6 +294,73 @@ The `normalized_output` field represents only *formatting* normalisation:
 
 Implementations **must** verify that `raw_output` and `normalized_output` are
 semantically equivalent before constructing a `ModelResponse`.
+
+#### AST Comparison for Code Responses
+
+<!-- Addresses EDGE-INT-006, EDGE-INT-023 (issue #134) -->
+
+When a model response contains code (Python, JSON, YAML, or other structured
+text), the equivalence check between `raw_output` and `normalized_output` is
+performed using **AST-level comparison**, not string equality. Two code snippets
+are considered semantically equivalent for normalization purposes if and only if
+their parsed abstract syntax trees are identical under Python's `ast.dump()`.
+
+**Rules for Python code normalization:**
+
+| Transform | Allowed | Rationale |
+|-----------|---------|-----------|
+| Strip trailing whitespace on each line | ✅ | Pure formatting |
+| Normalise `\r\n` → `\n` | ✅ | Platform-independent |
+| Remove blank lines between top-level statements (max 2 blank lines preserved) | ✅ | PEP 8 formatting |
+| Change indentation character (`\t` ↔ spaces) | ❌ | Python-semantic; `IndentationError` risk |
+| Re-order function parameters | ❌ | Semantic change |
+| Rename variables or identifiers | ❌ | Semantic change |
+| Add/remove `pass` statements, imports | ❌ | Semantic change |
+
+**Implementation contract:**
+
+```python
+import ast
+
+def assert_code_semantically_equivalent(raw: str, normalised: str) -> None:
+    """Raise ValueError if normalised code is not semantically equivalent to raw.
+
+    Uses ast.dump() for Python code. For non-Python text, falls back to
+    string equality after whitespace normalization.
+
+    Raises:
+        ValueError: If AST parse fails or ASTs differ.
+    """
+    try:
+        raw_ast = ast.dump(ast.parse(raw))
+        norm_ast = ast.dump(ast.parse(normalised))
+    except SyntaxError:
+        # Not valid Python — fall back to whitespace-normalised string comparison
+        raw_ws = " ".join(raw.split())
+        norm_ws = " ".join(normalised.split())
+        if raw_ws != norm_ws:
+            raise ValueError(
+                "normalized_output is not semantically equivalent to raw_output "
+                "(non-Python text: whitespace-normalised strings differ)"
+            )
+        return
+    if raw_ast != norm_ast:
+        raise ValueError(
+            "normalized_output is not semantically equivalent to raw_output "
+            "(Python ASTs differ)"
+        )
+```
+
+**Scope note**: The `response_hash` is always computed from `normalized_output`
+(post-formatting normalization), never from the AST dump. The AST check is a
+**construction-time guard** to prevent accidentally recording a semantically
+different normalised output, not a new hashing input.
+
+**Non-code responses**: For plain-text responses (no code blocks), semantic
+equivalence is verified by whitespace-normalised string comparison (join on
+single space). The full AST pipeline is only invoked when the response contains
+a fenced code block (` ```python `) or when the normaliser detects a
+`SyntaxError` on the raw output.
 
 ---
 
@@ -704,6 +772,40 @@ keys `prompt_hash`, `consensus_ratio`, `response_hash`, or `model_ids`. Consumer
 code must always read these values from the dedicated fields, never from
 `metadata`. This invariant is enforced at construction time.
 
+### 6.6 All-Committee-Timeout Behavior
+
+<!-- Addresses EDGE-INT-002 (issue #134) -->
+
+When **all N committee members** time out or fail to respond, the DRE pipeline
+MUST produce a `ConsensusResult` with `agreements = 0` and `total = N` (the
+number of models **queried**, per the denominator policy in §3.5). This yields
+`consensus_ratio = 0.0` → `ConsensusClassification.NONE`.
+
+The resulting `DeterministicProof` is constructed with:
+- `consensus_ratio = 0.0`
+- `classification = NONE`
+- `response_hash = SHA-256(b"") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+- `model_ids` = the list of models that were **queried** (not only those that
+  responded), so that the proof is auditable.
+
+The proof is **valid** (passes `ProofVerifier.verify()`) but the `NONE`
+classification prevents deployment authorization under the ADA 7-condition gate
+(condition 2: DRE quorum satisfied). The proof is persisted to the audit trail
+as evidence of the timeout event.
+
+**Error vs. valid-proof distinction**: The DRE executor MUST NOT raise an
+unhandled exception when all models time out. A `DeterministicProof` with
+`ConsensusClassification.NONE` is the correct response. Callers that require
+a minimum consensus level (e.g., `MAJORITY`) are responsible for checking the
+`classification` field and escalating to human review accordingly.
+
+```
+All N timeouts → ConsensusResult.build(agreements=0, total=N)
+               → ratio=0.0 → classification=NONE
+               → DeterministicProof(response_hash=SHA-256(b""), ...)
+               → proof persisted; deployment BLOCKED (ADA condition 2 fails)
+```
+
 ---
 
 ## 7. Edge Case Handling Reference
@@ -795,8 +897,6 @@ flowchart TD
     MAJORITY --> PROOF
     CANON --> PROOF
 ```
-
----
 
 ---
 
@@ -1123,6 +1223,89 @@ verify `response_hash` from the stored output rather than re-running the LLM.
 
 ---
 
+## 13. Third-Party Verification Package
+
+<!-- Addresses EDGE-INT-004, EDGE-INT-025 (issue #134) -->
+
+### 13.1 Purpose
+
+Any third party MUST be able to independently replay the DRE pipeline and
+arrive at the same `response_hash` and `consensus_ratio` **without access to
+internal DRE state**, private keys, or the raw LLM API responses. This property
+is the foundation of independent auditability.
+
+> **Note**: §12.2 (Full Replay Verification) describes the step-by-step LLM
+> replay procedure for validators.  This section (§13) defines the **minimum
+> public data package** that enables that replay — i.e., what the prover must
+> make available so a third-party verifier can execute the §12.2 procedure.
+
+### 13.2 Minimum Verification Package
+
+The following information is sufficient for a third-party verifier to
+deterministically reconstruct and validate a `DeterministicProof`:
+
+| Field | Source | Sufficient For |
+|-------|--------|---------------|
+| `prompt_bytes` | Raw canonical prompt bytes (before hashing) | Recompute `prompt_hash` and re-execute models |
+| `model_ids` | From `DeterministicProof.model_ids` | Identify which models to query |
+| `determinism_params` | `DeterminismParams` (temperature=0.0, seed, top_p=1.0) | Reproduce sampling conditions |
+| `DeterministicProof` | The full serialised proof JSON | Verify all hash fields |
+
+A verifier who receives these four items can:
+1. Call `CanonicalPrompt.from_str(prompt_bytes.decode("utf-8"))` and verify
+   `canonical_prompt.prompt_hash == proof.prompt_hash`.
+2. Execute each model in `model_ids` with the given `determinism_params`.
+3. Normalise each response and compute each `response_hash`.
+4. Compute `ConsensusResult.build(agreements, total)` from the majority vote.
+5. Verify `abs(consensus_result.consensus_ratio - proof.consensus_ratio) <= 1e-9`.
+6. Verify `majority_response.response_hash == proof.response_hash`.
+
+**No private keys, no internal database, no shared secret state is required for
+step 1–6.** The verifier only needs the public prompt bytes, model IDs, and
+determinism parameters — all of which are recorded in the proof or deployment trace.
+
+### 13.3 Integration Test Verification Contract
+
+<!-- Addresses EDGE-INT-004 (issue #134) -->
+
+The integration test for third-party verification MUST verify the contract
+defined in `specs/dre-integration-test-spec.md §5.2`. The minimum assertion set:
+
+```python
+assert result.prompt_hash_match      is True
+assert result.response_hash_match    is True
+assert result.consensus_ratio_match  is True   # within 1e-9
+assert result.model_ids_match        is True
+```
+
+### 13.4 What the Verifier Cannot Check Without Additional Data
+
+The following checks require additional on-chain or trust-anchor data and are
+**out of scope** for the DRE data model layer:
+
+| Check | Requires |
+|-------|---------|
+| Agent Ed25519 signature validity | Agent public key (from DID registry) |
+| Deployment policy compliance | On-chain DeploymentContract |
+| Validator quorum attestation | Validator stake registry |
+| Replay deduplication (proof_id uniqueness) | AVM/trace deduplication store |
+
+---
+
+## 14. Edge Case Handling Reference (Extended)
+
+<!-- Extends §7 with integration-test-specific edge cases from issue #134 -->
+
+| EDGE ID | Scenario | Resolution |
+|---------|----------|-----------|
+| EDGE-INT-002 | All N committee members time out | `ConsensusResult(agreements=0, total=N)` → NONE; `DeterministicProof` with `response_hash=SHA-256(b"")` — see §6.6 |
+| EDGE-INT-006 | Code normalizer alters semantics | AST check enforced at `ModelResponse` construction — see §3.3 AST section |
+| EDGE-INT-023 | AST comparison for code responses | `assert_code_semantically_equivalent()` defined in §3.3 — see AST section |
+| EDGE-INT-025 | Third-party verifier minimum data | `(prompt_bytes, model_ids, determinism_params, proof_json)` — see §13.2 |
+
+---
+
 *Spec created to address issue #30 and referenced by issue #28.*  
-*References: `maatproof/proof.py`, `specs/llm-provider-spec.md`, `specs/avm-spec.md`, `specs/trace-verification-spec.md`, `docs/06-security-model.md`.*  
-*Sections §10–§12 added to address issue #137 (DRE Documentation spec gaps).*
+*Sections §10–§12 added to address issue #137 (DRE Documentation spec gaps).*  
+*Sections §13–§14 added to address issue #134 (DRE Integration Tests) — EDGE-INT-002, EDGE-INT-004, EDGE-INT-006, EDGE-INT-023, EDGE-INT-025.*  
+*References: `maatproof/proof.py`, `specs/llm-provider-spec.md`, `specs/avm-spec.md`, `specs/trace-verification-spec.md`, `docs/06-security-model.md`, `specs/dre-integration-test-spec.md`.*
