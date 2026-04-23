@@ -213,7 +213,7 @@ class CanonicalPrompt:
 |------|------|
 | Unicode form | NFC via `unicodedata.normalize("NFC", s)` — eliminates EDGE-006 |
 | Control characters | Strip codepoints `< 0x20` except `\t` (0x09), `\n` (0x0A), `\r` (0x0D) — eliminates EDGE-030 |
-| Encoding | UTF-8 strictly |
+| Encoding | UTF-8 strictly (`errors="strict"`); lone Unicode surrogates (U+D800–U+DFFF) cause `UnicodeEncodeError` and the prompt is rejected — eliminates EDGE-D048 |
 | Prompt content | Treated as opaque string — JSON prompts are **not** re-parsed — eliminates EDGE-022 |
 | Max size | 32,768 bytes post-normalisation; raises `ValueError` if exceeded — eliminates EDGE-008 |
 | Empty input | Valid — SHA-256(b"") = `e3b0c442...` — eliminates EDGE-007, EDGE-035 |
@@ -297,7 +297,7 @@ semantically equivalent before constructing a `ModelResponse`.
 
 #### AST Comparison for Code Responses
 
-<!-- Addresses EDGE-INT-006, EDGE-INT-023 (issue #134) -->
+<!-- Addresses EDGE-INT-006, EDGE-INT-023 (issue #134), EDGE-D007 (issue #137) -->
 
 When a model response contains code (Python, JSON, YAML, or other structured
 text), the equivalence check between `raw_output` and `normalized_output` is
@@ -854,6 +854,8 @@ All N timeouts → ConsensusResult.build(agreements=0, total=N)
 | EDGE-038 | Out-of-range seed | `DeterminismParams` validates seed in `[0, 2^32-1]` |
 | EDGE-039 | Thread-safe normalisation | `unicodedata.normalize` is reentrant in CPython/PyPy |
 | EDGE-040 | Multi-model `response_hash` | SHA-256 of majority `normalized_output`; SHA-256(b"") if NONE |
+| EDGE-D007 | AST comparison for code | Text-level normalisation only in v1.0; AST-level deferred to v2.0 (§3.3, issue #288) |
+| EDGE-D048 | Unicode surrogate characters in prompt | `encode("utf-8", errors="strict")` raises `UnicodeEncodeError`; prompt rejected (§3.2) |
 
 ---
 
