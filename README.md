@@ -304,32 +304,32 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Latest: Issue #121 [User Authentication] Documentation · OAuth2 PKCE + TOTP/WebAuthn MFA · Python, FastAPI, PostgreSQL_
+> _Issues #14 · #119 · #137 · #133: Data Model · Core Pipeline · DRE Documentation · CI/CD Workflow (ACI/ACD Workflows, Trust Anchor Gates, Human Approval Gate, Signed Audit Log)_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost — Issue #121 (Auth Documentation) | $1,846 | $123 | **93%** |
-| Build cost — Issue #136 (VRP Documentation) | $1,920 | $91 | **95%** |
-| Build cost — Issue #119 (Core Pipeline) | $6,741 | $247 | **96%** |
-| Build cost — Issue #14 (Data Model) | $2,326 | $148 | **94%** |
-| **Cumulative build cost (#14+#119+#136+#121)** | **$12,833** | **$609** | **95%** |
-| Auth service runtime (GCP, 100 MAU) | — | **$95/yr** incremental | — |
-| Annual infra + AI API (100 MAU, GCP, full stack) | — | **$444/yr** | — |
-| Auth documentation publish time | 5–14 days | < 30 min | **99% faster** |
-| API reference staleness | 30 days | 0 days | **100%** |
-| EDGE case coverage (auth spec) | ~40% | **100%** | **+60pp** |
-| Annual developer savings | — | $215,040 | **3,584 hrs/yr** |
-| Security risk reduction (auth docs) | — | ~$75K/yr | **>300× ROI** |
+| Build cost — CI/CD Workflow (#133) | $4,540 | $167 | **96%** |
+| Build cost — DRE Docs (#137) | $972 | $48 | **95%** |
+| Build cost — Core Pipeline (#119) | $6,741 | $247 | **96%** |
+| Build cost — Data Model (#14) | $2,326 | $148 | **94%** |
+| Combined build cost (#14+#119+#137+#133) | $14,579 | $594 | **96%** |
+| Annual developer savings | — | $198,720 | **3,312 hrs/yr** |
+| Annual CI/CD cost (GCP, public repo, 100 MAU) | — | **$392/yr** | GitHub Actions free |
+| GitHub Actions runtime (public repo) | — | **$0/yr** | Unlimited free minutes |
+| Self-hosted runners vs GitHub-hosted (edge) | — | — | **$172,800/yr saved** |
+| Signed audit log cost (HMAC-SHA256) | — | **$0.07/yr** | Per-job Firestore writes |
+| Human approval gate (GitHub Environments) | — | **$72/yr** | 3 min/approval click |
+| DRE multi-model consensus premium | — | **+$3.24/mo** | 3-model quorum |
+| Trust anchor gate bypass prevention | Possible | **Impossible** | 100% elimination |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Documentation staleness | 14 days avg | 0 days | **100%** |
-| DORA rating | Low | **Elite** | Top 10% globally |
-| Year 1 ROI | — | — | **10,463%** |
-| 5-year TCO savings | — | — | **$1,762,197** |
+| DORA rating | Low | **Elite** | — |
+| Year 1 ROI | — | — | **10,659%** |
+| 5-year TCO savings | — | — | **$1,746,116** |
 
-> _Last estimated: 2026-04-23 · Run #6 · Issue #121 [User Authentication Documentation] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issue #133 [CI/CD Workflow] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
