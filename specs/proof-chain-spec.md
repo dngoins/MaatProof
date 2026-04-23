@@ -608,7 +608,7 @@ Full tamper protection requires:
 
 ## §8 — PipelineConfig Validation
 
-<!-- Addresses EDGE-151 -->
+<!-- Addresses EDGE-151, EDGE-CFG-031 -->
 
 `PipelineConfig` validates all fields at construction time:
 
@@ -622,6 +622,27 @@ Full tamper protection requires:
 
 `PipelineConfig.__post_init__()` raises `ValueError` with a descriptive message for
 any constraint violation.
+
+**Field name mapping from YAML config (EDGE-CFG-031):**
+
+The pipeline application configuration YAML (see `specs/pipeline-config-spec.md`) uses
+the name `retry_max` for this field. The YAML loader maps it to `max_fix_retries` in the
+Python `PipelineConfig` class:
+
+```python
+# In PipelineAppConfig._build_pipeline_config():
+pipeline_config = PipelineConfig(
+    name=...,
+    secret_key=resolved_hmac_key,
+    model_id=...,
+    require_human_approval=app_config.human_approval_required,
+    max_fix_retries=app_config.retry_max,   # YAML: retry_max → Python: max_fix_retries
+)
+```
+
+Both names (`retry_max` and `max_fix_retries`) refer to the maximum number of agent
+fix-retry attempts before human escalation, per CONSTITUTION §6. The YAML uses
+`retry_max` for conciseness; the Python class uses `max_fix_retries` for explicitness.
 
 ---
 
