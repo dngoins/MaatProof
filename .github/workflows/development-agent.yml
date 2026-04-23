@@ -161,11 +161,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install GitHub Copilot CLI
-        run: gh extension install github/gh-copilot || true
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude --version
 
-      - name: Implement via GPT 5.3 Codex
+      - name: Implement via GPT 5.3 Codex style
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -179,20 +182,26 @@ jobs:
 
           SYSTEM_PROMPT=$(cat .github/agents/development-agent.md)
 
-          IMPL_PROMPT="Implement the following issue using the specified tech stack.
-          Add Big O complexity annotations as inline comments on every function.
-          Create a COMPLEXITY.md file summarizing algorithm choices and trade-offs.
-          Follow these naming conventions: PascalCase for classes, camelCase for variables, snake_case for DB columns.
+          PROMPT="You are the Development Agent implementing code in the style of GPT 5.3 Codex.
+          Prioritize: minimal code, maximum reuse of standard library, functional patterns where possible.
 
-          Issue Title: ${ISSUE_TITLE}
-          Issue Body:
-          ${ISSUE_BODY}"
+          Implement the following issue:
+          Title: ${ISSUE_TITLE}
+          Body:
+          ${ISSUE_BODY}
 
-          gh copilot suggest --model gpt-5.3-codex "$IMPL_PROMPT" || \
-            echo "$IMPL_PROMPT" | gh copilot --model gpt-5.3-codex || true
+          Instructions:
+          1. Implement the deliverable using the specified tech stack.
+          2. Favor concise, functional-style code with list comprehensions and built-in functions.
+          3. Add Big O complexity annotations as inline comments on every function.
+          4. Create a COMPLEXITY.md file summarizing algorithm choices and trade-offs.
+          5. Follow Constitution naming conventions.
+          6. Stage and commit all files."
+
+          claude -p --dangerously-skip-permissions --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
 
           git add -A
-          git diff --cached --quiet || git commit -m "feat: implement ${ISSUE_TITLE} via GPT 5.3 Codex"
+          git diff --cached --quiet || git commit -m "feat: implement ${ISSUE_TITLE} via GPT 5.3 Codex style"
           git push origin "$BRANCH_NAME"
 
           gh pr create --repo "$REPO" \
@@ -202,8 +211,8 @@ jobs:
 
           Part of #${ISSUE_NUMBER}
 
-          **Model:** GPT 5.3 Codex
-          **Tool:** GitHub Copilot CLI
+          **Model:** GPT 5.3 Codex style (functional, minimal)
+          **Tool:** Claude Code CLI
 
           _This is 1 of 4 competing implementations. See #${ISSUE_NUMBER} for the Judging Agent report._" \
             --label "agent:developer" \
@@ -223,11 +232,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install GitHub Copilot CLI
-        run: gh extension install github/gh-copilot || true
+      - name: Install Claude Code CLI
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          claude --version
 
-      - name: Implement via GPT 5.4
+      - name: Implement via GPT 5.4 style
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
@@ -241,20 +253,26 @@ jobs:
 
           SYSTEM_PROMPT=$(cat .github/agents/development-agent.md)
 
-          IMPL_PROMPT="Implement the following issue using the specified tech stack.
-          Add Big O complexity annotations as inline comments on every function.
-          Create a COMPLEXITY.md file summarizing algorithm choices and trade-offs.
-          Follow these naming conventions: PascalCase for classes, camelCase for variables, snake_case for DB columns.
+          PROMPT="You are the Development Agent implementing code in the style of GPT 5.4.
+          Prioritize: maximum type safety, defensive programming, verbose error messages, enterprise patterns.
 
-          Issue Title: ${ISSUE_TITLE}
-          Issue Body:
-          ${ISSUE_BODY}"
+          Implement the following issue:
+          Title: ${ISSUE_TITLE}
+          Body:
+          ${ISSUE_BODY}
 
-          gh copilot suggest --model gpt-5.4 "$IMPL_PROMPT" || \
-            echo "$IMPL_PROMPT" | gh copilot --model gpt-5.4 || true
+          Instructions:
+          1. Implement the deliverable using the specified tech stack.
+          2. Favor defensive, enterprise-style code with explicit type checks and guard clauses.
+          3. Add Big O complexity annotations as inline comments on every function.
+          4. Create a COMPLEXITY.md file summarizing algorithm choices and trade-offs.
+          5. Follow Constitution naming conventions.
+          6. Stage and commit all files."
+
+          claude -p --dangerously-skip-permissions --system-prompt "$SYSTEM_PROMPT" "$PROMPT"
 
           git add -A
-          git diff --cached --quiet || git commit -m "feat: implement ${ISSUE_TITLE} via GPT 5.4"
+          git diff --cached --quiet || git commit -m "feat: implement ${ISSUE_TITLE} via GPT 5.4 style"
           git push origin "$BRANCH_NAME"
 
           gh pr create --repo "$REPO" \
@@ -264,8 +282,8 @@ jobs:
 
           Part of #${ISSUE_NUMBER}
 
-          **Model:** GPT 5.4
-          **Tool:** GitHub Copilot CLI
+          **Model:** GPT 5.4 style (defensive, enterprise)
+          **Tool:** Claude Code CLI
 
           _This is 1 of 4 competing implementations. See #${ISSUE_NUMBER} for the Judging Agent report._" \
             --label "agent:developer" \
