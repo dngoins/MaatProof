@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MaatProof Cost Summary — Issue #14</title>
+  <title>MaatProof Cost Summary — Issue #30 DRE Data Model</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -33,6 +33,7 @@
     .badge { display: inline-block; background: var(--green); color: #000; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; margin-left: 0.5rem; }
     .badge-blue { background: var(--accent); }
     .badge-yellow { background: var(--yellow); }
+    .badge-purple { background: var(--purple); color: #000; }
 
     /* KPI Cards */
     .kpi-grid {
@@ -52,6 +53,7 @@
     .kpi-card .value.blue { color: var(--accent); }
     .kpi-card .value.yellow { color: var(--yellow); }
     .kpi-card .value.red { color: var(--red); }
+    .kpi-card .value.purple { color: var(--purple); }
     .kpi-card .sub { font-size: 0.75rem; color: var(--muted); }
 
     /* Chart grid */
@@ -90,13 +92,22 @@
       margin: 1rem 0;
     }
     .recommendation h4 { color: var(--green); margin-bottom: 0.25rem; }
+
+    .dre-highlight {
+      background: var(--surface);
+      border-left: 4px solid var(--purple);
+      border-radius: 0 8px 8px 0;
+      padding: 1rem 1.5rem;
+      margin: 1rem 0;
+    }
+    .dre-highlight h4 { color: var(--purple); margin-bottom: 0.25rem; }
   </style>
 </head>
 <body>
 
-  <h1>MaatProof Cost Summary <span class="badge">cost:estimated</span></h1>
+  <h1>MaatProof Cost Summary <span class="badge">cost:estimated</span> <span class="badge badge-purple">DRE</span></h1>
   <p class="subtitle">
-    Issue #14 · [ACI/ACD Engine] Data Model / Schema · Generated 2026-04-23 (Run #2) ·
+    Issue #30 · [Deterministic Reasoning Engine (DRE)] Data Model / Schema · Generated 2026-04-23 (Run #1) ·
     <a href="cost-estimation-report.md">Full Report ↗</a>
   </p>
 
@@ -110,8 +121,8 @@
     </div>
     <div class="kpi-card">
       <div class="label">Build Cost Savings</div>
-      <div class="value">94%</div>
-      <div class="sub">$2,326 → $148 per issue</div>
+      <div class="value">93%</div>
+      <div class="sub">$2,725 → $184 per issue</div>
     </div>
     <div class="kpi-card">
       <div class="label">Annual Dev Savings</div>
@@ -120,13 +131,13 @@
     </div>
     <div class="kpi-card">
       <div class="label">ROI (Year 1)</div>
-      <div class="value">12,433%</div>
+      <div class="value">12,529%</div>
       <div class="sub">Payback: &lt;1 month</div>
     </div>
     <div class="kpi-card">
       <div class="label">5-Year TCO Savings</div>
-      <div class="value">$1.51M</div>
-      <div class="sub">vs $1.52M traditional</div>
+      <div class="value">$1.57M</div>
+      <div class="sub">vs $1.58M traditional</div>
     </div>
     <div class="kpi-card">
       <div class="label">Deploy Frequency</div>
@@ -139,10 +150,22 @@
       <div class="sub">15% → 3% defect escape</div>
     </div>
     <div class="kpi-card">
-      <div class="label">MTTR</div>
-      <div class="value">↓94%</div>
-      <div class="sub">4 hrs → 15 min recovery</div>
+      <div class="label">DRE Runtime Cost</div>
+      <div class="value purple">$0.005</div>
+      <div class="sub">Per month (standard, 100 MAU)</div>
     </div>
+  </div>
+
+  <!-- DRE Specific Highlight -->
+  <div class="dre-highlight">
+    <h4>🧠 Issue #30 — DRE Data Model Specific Findings</h4>
+    <p>
+      The 4 DRE data models (<code>DeterministicProof</code>, <code>CanonicalPrompt</code>, <code>ModelResponse</code>, <code>ConsensusResult</code>)
+      have an effective runtime cost of <strong>$0.005/mo</strong> at standard profile (100 MAU, 1K proofs/day).
+      Only 2 Firestore writes per consensus round (vs ~100 writes per pipeline run in Issue #14).
+      <code>ModelResponse</code> objects are in-memory only — no persistence cost during the consensus window.
+      Build savings: <strong>93%</strong> ($2,541 saved per issue vs traditional development).
+    </p>
   </div>
 
   <!-- Charts Row 1 -->
@@ -162,11 +185,11 @@
   <h2>ACI/ACD vs Traditional Build Costs</h2>
   <div class="chart-grid">
     <div class="chart-card">
-      <h3>Issue #14 Build Cost Breakdown</h3>
+      <h3>Issue #30 DRE Build Cost Breakdown</h3>
       <canvas id="buildCostDonut" height="220"></canvas>
     </div>
     <div class="chart-card">
-      <h3>Full Feature (9-Issue Sprint) Cost Comparison</h3>
+      <h3>Full DRE Feature (9-Issue Sprint) Cost Comparison</h3>
       <canvas id="sprintCostBar" height="220"></canvas>
     </div>
   </div>
@@ -183,6 +206,61 @@
       <canvas id="roiTimelineChart" height="220"></canvas>
     </div>
   </div>
+
+  <!-- DRE Model Cost Table -->
+  <h2>DRE Data Model Runtime Cost (Issue #30)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Model</th>
+        <th>Key Operation</th>
+        <th>Latency</th>
+        <th>Persistence</th>
+        <th>Monthly Cost (Standard)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>DeterministicProof</code></td>
+        <td>Extends ReasoningProof; to_dict()</td>
+        <td>&lt;1ms</td>
+        <td class="neutral">Firestore write</td>
+        <td class="win">~$0.002/mo</td>
+      </tr>
+      <tr>
+        <td><code>CanonicalPrompt</code></td>
+        <td>NFC normalization + SHA-256</td>
+        <td>&lt;0.2ms</td>
+        <td class="win">In-memory only</td>
+        <td class="win">~$0.001/mo</td>
+      </tr>
+      <tr>
+        <td><code>ModelResponse</code></td>
+        <td>Field storage + param validation</td>
+        <td>&lt;0.05ms</td>
+        <td class="win">In-memory only</td>
+        <td class="win">$0.00/mo</td>
+      </tr>
+      <tr>
+        <td><code>ConsensusResult</code></td>
+        <td>M-of-N ratio + classification</td>
+        <td>&lt;0.5ms</td>
+        <td class="neutral">Firestore write</td>
+        <td class="win">~$0.002/mo</td>
+      </tr>
+      <tr>
+        <td><code>ConsensusClassification</code></td>
+        <td>Enum: STRONG/MAJORITY/WEAK/NONE</td>
+        <td>&lt;0.01ms</td>
+        <td class="win">Enum (no DB)</td>
+        <td class="win">$0.00/mo</td>
+      </tr>
+      <tr style="font-weight:bold;">
+        <td colspan="4">TOTAL DRE data layer</td>
+        <td class="win">~$0.005/mo</td>
+      </tr>
+    </tbody>
+  </table>
 
   <!-- DORA Table -->
   <h2>DORA Metrics — MaatProof vs Traditional</h2>
@@ -256,7 +334,7 @@
         <td class="win">GCP</td>
       </tr>
       <tr>
-        <td>Audit Log DB</td>
+        <td>Consensus DB (DRE records)</td>
         <td>Cosmos: $0.008/RU-hr</td>
         <td>DynamoDB: $1.25/M write</td>
         <td class="win">Firestore: $0.06/100K writes</td>
@@ -302,7 +380,7 @@
 
   <div class="recommendation">
     <h4>🏆 Recommendation: GCP-primary + AWS CloudWatch for logs</h4>
-    <p>GCP wins 5 of 8 resource categories for MaatProof's workload. The Firestore append-only pattern for AuditEntry reduces database costs by 87% vs Cosmos DB at standard scale. Add AWS CloudWatch for log aggregation to save ~$400/mo at edge scale.</p>
+    <p>GCP wins 5 of 8 resource categories for MaatProof's DRE workload. Firestore is optimal for the append-only <code>ConsensusResult</code> + <code>DeterministicProof</code> write pattern — 87% cheaper than Cosmos DB at standard scale. <code>ModelResponse</code> objects stay in-memory during consensus windows (no database cost). Add AWS CloudWatch for log aggregation to save ~$400/mo at edge scale (10K MAU).</p>
   </div>
 
   <!-- Revenue Table -->
@@ -347,7 +425,7 @@
         <td>Enterprise</td>
         <td>$1,499</td>
         <td>8</td>
-        <td>$103</td>
+        <td>$104</td>
         <td class="win">93%</td>
         <td class="win">$11,992</td>
       </tr>
@@ -360,7 +438,7 @@
 
   <footer>
     <p>
-      Generated by Cost Estimator Agent · MaatProof ACI/ACD Pipeline · 2026-04-23 (Run #2) ·
+      Generated by Cost Estimator Agent · MaatProof ACI/ACD Pipeline · 2026-04-23 (Issue #30, Run #1) ·
       <a href="cost-estimation-report.md">Full Report</a> ·
       <a href="../../README.md">README</a>
     </p>
@@ -370,11 +448,6 @@
   </footer>
 
   <script>
-    const CHART_DEFAULTS = {
-      color: '#c9d1d9',
-      borderColor: '#30363d',
-    };
-
     Chart.defaults.color = '#c9d1d9';
     Chart.defaults.borderColor = '#30363d';
     Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
@@ -408,7 +481,7 @@
         labels: ['Azure', 'AWS', 'GCP', 'GCP+AWS Logs'],
         datasets: [{
           label: 'Annual Cost ($)',
-          data: [22824, 8160, 5100, 3450],
+          data: [22824, 8160, 5184, 3500],
           backgroundColor: ['#f85149', '#d29922', '#3fb950', '#58a6ff'],
           borderRadius: 4,
         }]
@@ -423,23 +496,33 @@
       }
     });
 
-    // 3. Build Cost Donut
+    // 3. Build Cost Donut (Issue #30 specific)
     new Chart(document.getElementById('buildCostDonut'), {
       type: 'doughnut',
       data: {
-        labels: ['Dev Hours ($720)', 'QA ($270)', 'Spec Validation ($480)', 'Code Review ($180)', 'Docs ($160)', 'Rework ($216)', 'Infra ($240)', 'Other ($60)'],
+        labels: [
+          'Dev Hours ($900)', 'QA ($315)', 'Spec Validation ($480)',
+          'Code Review ($180)', 'Docs ($160)', 'Rework ($270)',
+          'Infra ($240)', 'Consensus Logic ($120)', 'Other ($60)'
+        ],
         datasets: [
           {
             label: 'Traditional',
-            data: [720, 270, 480, 180, 160, 216, 240, 60],
-            backgroundColor: ['#f85149','#ff7b72','#ffa198','#ffcec9','#d29922','#e3b341','#f0c94e','#ffd563'],
+            data: [900, 315, 480, 180, 160, 270, 240, 120, 60],
+            backgroundColor: [
+              '#f85149','#ff7b72','#ffa198','#ffcec9',
+              '#d29922','#e3b341','#f0c94e','#ffd563','#ffe99a'
+            ],
             borderColor: '#0d1117',
             borderWidth: 2,
           },
           {
             label: 'ACI/ACD',
-            data: [90, 0, 3, 0, 0, 36, 15, 4],
-            backgroundColor: ['#3fb950','#56d364','#7ee787','#a5f3b5','#26a641','#2ea043','#1f8a35','#196127'],
+            data: [90, 0, 3, 0, 0, 45, 15, 27, 4],
+            backgroundColor: [
+              '#3fb950','#56d364','#7ee787','#a5f3b5',
+              '#26a641','#2ea043','#1f8a35','#196127','#0f4420'
+            ],
             borderColor: '#0d1117',
             borderWidth: 2,
           }
@@ -454,21 +537,21 @@
       }
     });
 
-    // 4. Sprint Cost Bar
+    // 4. Sprint Cost Bar (DRE 9-issue sprint)
     new Chart(document.getElementById('sprintCostBar'), {
       type: 'bar',
       data: {
-        labels: ['Data Model', 'Core Impl', 'Infrastructure', 'Config', 'Unit Tests', 'Int. Tests', 'CI/CD', 'Docs', 'Validation'],
+        labels: ['DRE Data Model', 'Core Impl', 'Infrastructure', 'Config', 'Unit Tests', 'Int. Tests', 'CI/CD', 'Docs', 'Validation'],
         datasets: [
           {
             label: 'Traditional ($)',
-            data: [2326, 4800, 3600, 1440, 2880, 3600, 2400, 1920, 2400],
+            data: [2725, 5400, 3600, 1440, 2880, 3600, 2400, 1920, 2400],
             backgroundColor: '#f85149',
             borderRadius: 4,
           },
           {
             label: 'ACI/ACD ($)',
-            data: [148, 320, 240, 96, 192, 240, 160, 128, 160],
+            data: [184, 360, 240, 96, 192, 240, 160, 128, 160],
             backgroundColor: '#3fb950',
             borderRadius: 4,
           }
@@ -484,7 +567,7 @@
       }
     });
 
-    // 5. Cost Projection Line
+    // 5. Cost Projection Line (DRE consensus scale)
     new Chart(document.getElementById('costProjectionLine'), {
       type: 'line',
       data: {
@@ -508,7 +591,7 @@
           },
           {
             label: 'GCP/mo',
-            data: [2.06, 10, 21, 53, 106, 425],
+            data: [2.06, 10, 21, 53, 108, 432],
             borderColor: '#3fb950',
             backgroundColor: 'rgba(63,185,80,0.1)',
             tension: 0.3,
@@ -526,7 +609,7 @@
       }
     });
 
-    // 6. ROI Timeline
+    // 6. ROI Timeline (updated for Issue #30 DRE feature scope)
     new Chart(document.getElementById('roiTimelineChart'), {
       type: 'line',
       data: {
@@ -534,7 +617,7 @@
         datasets: [
           {
             label: 'Traditional Cumulative Cost ($K)',
-            data: [0, 25.4, 152, 304, 608, 912, 1522],
+            data: [0, 26.4, 158, 316, 632, 949, 1582],
             borderColor: '#f85149',
             backgroundColor: 'rgba(248,81,73,0.05)',
             tension: 0.3,
@@ -542,7 +625,7 @@
           },
           {
             label: 'ACI/ACD Cumulative Cost ($K)',
-            data: [2.4, 2.6, 3.6, 4.8, 7.2, 9.6, 14.1],
+            data: [2.5, 2.7, 3.7, 5.0, 7.4, 9.7, 14.2],
             borderColor: '#3fb950',
             backgroundColor: 'rgba(63,185,80,0.1)',
             tension: 0.3,
@@ -550,7 +633,7 @@
           },
           {
             label: 'Cumulative Savings ($K)',
-            data: [-2.4, 22.4, 148, 302, 601, 906, 1508],
+            data: [-2.5, 23.7, 154, 314, 625, 939, 1568],
             borderColor: '#58a6ff',
             borderDash: [6, 3],
             tension: 0.3,
