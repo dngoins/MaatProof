@@ -2832,3 +2832,585 @@ The following scenarios are identified as requiring additional specification wor
 - **EDGE-272 (gas price management for staking transactions)**: Behaviour when staking transaction stays pending indefinitely due to underpriced gas — tracked in GitHub Issue #314
 - **EDGE-275 (TOCTOU DAO vote rescission)**: Authority level computed as FULL_AUTONOMOUS but DAO vote rescinded before deployment step executes — tracked in GitHub Issue #311
 - **EDGE-194 (lost wallet)**: Agent wallet recovery path — tracked in GitHub Issue #70
+- **EDGE-IT-018/019 (Python AdaOrchestrator + DRE signal wiring)**: Production AdaOrchestrator class specification — tracked in GitHub Issue #306
+- **EDGE-IT-025 (ALLOWED_ENVIRONMENTS Python 3.11+)**: DeploymentAuthorityLevel Enum dict compatibility fix — tracked in GitHub Issue #310
+- **EDGE-IT-034 (Python AdaAuthorization equivalent)**: conditions_verified array for deployment proof — tracked in GitHub Issue #313
+
+---
+
+## § Integration Test Specification — Issue #135
+
+<!-- Addresses EDGE-IT-001 through EDGE-IT-080 -->
+
+This section specifies the integration test design for the Autonomous Deployment Authority
+(ADA) end-to-end flow. Authoritative reference for Issue #135 acceptance criteria.
+
+### Overview
+
+| AC# | Acceptance Criterion | Key Spec Section |
+|-----|---------------------|-----------------|
+| AC-1 | FULL_AUTONOMOUS deploys end-to-end; signed proof; no human approval | §AdaOrchestrator, §Proof Verification |
+| AC-2 | Rollback ≤ 60 s from degradation; signed `RollbackProof` | §Auto-Rollback Protocol, §ObservabilityMetricsDouble |
+| AC-3 | Low-score raises `AutonomousDeploymentBlockedError` | §AutonomousDeploymentBlockedError |
+| AC-4 | Stake deducted before deploy; `SlashRecord` on failed attestation | §Stake Deduction Flow |
+| AC-5 | Proofs independently verifiable | §Proof Verification in Python Layer |
+| AC-6 | Tests run without live cloud | §Integration Test Dev Configuration, §Test Double Protocols |
+
+---
+
+### Python ADA Test Orchestrator (`AdaOrchestrator`)
+
+<!-- Addresses EDGE-IT-018, EDGE-IT-031, EDGE-IT-039, EDGE-IT-040, EDGE-IT-052 -->
+
+The `AdaOrchestrator` is the primary integration test surface. Full production
+wiring is tracked in GitHub Issue #306.
+
+```python
+from __future__ import annotations
+from dataclasses import dataclass, field
+from decimal import Decimal
+from typing import Dict, List, Optional, Protocol, runtime_checkable
+import asyncio, time, uuid
+
+
+@dataclass
+class DeploymentResult:
+    """Returned by AdaOrchestrator.request_deployment().
+    <!-- Addresses EDGE-IT-001, EDGE-IT-031, EDGE-IT-040 -->
+    """
+    deployment_id:   str
+    authority_level: str                        # DeploymentAuthorityLevel.value
+    proof:           "ReasoningProof"           # Signed deployment proof
+    score:           "DeploymentScore"
+    stake_locked:    bool
+    rollback_proof:  Optional["RollbackProof"]  # Set after rollback triggered
+    finalized:       bool                       # True after monitoring window elapses
+    audit_entries:   list
+
+
+class InsufficientStakeError(MaatProofError):
+    """Raised when agent stake is below required threshold (EDGE-IT-062, EDGE-IT-063)."""
+
+
+class DeploymentAttestationError(MaatProofError):
+    """Raised when execution fails and SlashRecord is submitted (EDGE-IT-004, EDGE-IT-068)."""
+
+
+class MetricsUnavailableError(Exception):
+    """Raised by ObservabilityMetricsProvider.get_metrics() when endpoint unreachable."""
+
+
+class AdaOrchestrator:
+    """Testable ADA orchestrator facade.
+
+    Wires: score → authority level → stake lock → execution → monitoring → rollback.
+    Inject test doubles via constructor for integration tests (AC-6).
+    <!-- Addresses EDGE-IT-018, EDGE-IT-039, EDGE-IT-040, EDGE-IT-052 -->
+    """
+
+    def __init__(self, config: "ADAIntegrationTestConfig",
+                 metrics_provider: "ObservabilityMetricsProvider",
+                 staking_ledger: "StakingLedgerProvider",
+                 deployment_executor: "DeploymentExecutor",
+                 secret_key: bytes,
+                 proof_builder: "ProofBuilder") -> None:
+        self.config           = config
+        self.metrics_provider = metrics_provider
+        self.staking_ledger   = staking_ledger
+        self.executor         = deployment_executor
+        self.secret_key       = secret_key
+        self.proof_builder    = proof_builder
+        self._audit_log: list = []
+
+    async def request_deployment(
+        self,
+        score: "DeploymentScore",
+        risk_assessment: "RiskAssessment",
+        stake: "MaatStake",
+        deploy_environment: str,
+        agent_id: str,
+        deployment_id: Optional[str] = None,
+    ) -> DeploymentResult:
+        """Full ADA flow: score → authority → stake lock → execute → monitor.
+        <!-- Addresses EDGE-IT-001, EDGE-IT-031, EDGE-IT-039, EDGE-IT-040,
+             EDGE-IT-042, EDGE-IT-049, EDGE-IT-052 -->
+        """
+        deployment_id = deployment_id or str(uuid.uuid4())
+        env = deploy_environment.lower().strip()   # EDGE-IT-029
+
+        level = DeploymentAuthorityLevel.from_score(
+            total=score.total,
+            deploy_environment=env,
+            dao_full_autonomous_enabled=self.config.full_autonomous_enabled,
+            compliance_regulated=self.config.require_human_approval,
+        )
+        self._audit("ADA_AUTHORITY_COMPUTED",
+                    level=level.value, score=str(score.total), agent_id=agent_id)
+
+        if level == DeploymentAuthorityLevel.BLOCKED:
+            err = AutonomousDeploymentBlockedError(
+                reason="DeploymentScore below minimum threshold",
+                authority_level=level.value,
+                deployment_score=score.to_dict(),
+                trace_id=deployment_id,
+            )
+            self._audit("ADA_DEPLOY_BLOCKED", reason=err.reason, trace_id=deployment_id)
+            raise err
+
+        required_wei = stake.required_stake_wei(env)
+        balance = await self.staking_ledger.get_staked_balance(stake.wallet_address)
+        if balance < required_wei:
+            raise InsufficientStakeError(
+                f"Balance {balance} < required {required_wei} wei"
+            )
+        await self.staking_ledger.lock_stake(stake.wallet_address, required_wei,
+                                             time.time() + 3600)
+
+        from maatproof.chain import ReasoningChain
+        chain = ReasoningChain(builder=self.proof_builder)
+        chain.step(
+            context=f"ADA deployment to {env}",
+            reasoning=f"Authority: {level.value}. Score: {score.total}.",
+            conclusion="All ADA conditions satisfied. Deployment authorised.",
+        )
+        proof = chain.seal(metadata={
+            "environment": env, "deployment_id": deployment_id,
+            "authority_level": level.value,
+        })
+
+        success = await self.executor.execute(deployment_id, "latest")
+        if not success:
+            slash_pct = self.config.slash_pct_false_attestation
+            slash = SlashRecord(
+                agent_id=agent_id,
+                wallet_address=stake.wallet_address,
+                slash_amount_wei=int(
+                    Decimal(str(required_wei)) * Decimal(str(slash_pct)) / Decimal("100")
+                ),
+                slash_condition=SlashConditionCode.AGENT_FALSE_ATTESTATION,
+                slash_reason="Deployment execution failed attestation",
+                slash_recipient=stake.wallet_address,
+            )
+            await self.staking_ledger.record_slash(slash)
+            self._audit("ADA_SLASH_SUBMITTED",
+                        condition="AGENT_FALSE_ATTESTATION", agent_id=agent_id)
+            raise DeploymentAttestationError(
+                f"Deployment {deployment_id} failed; slash {slash.record_id} submitted."
+            )
+
+        result = DeploymentResult(
+            deployment_id=deployment_id, authority_level=level.value,
+            proof=proof, score=score, stake_locked=True,
+            rollback_proof=None, finalized=False, audit_entries=list(self._audit_log),
+        )
+        asyncio.create_task(self._monitoring_loop(result, stake, env))
+        return result
+
+    async def _monitoring_loop(self, result: "DeploymentResult",
+                               stake: "MaatStake", env: str) -> None:
+        """Poll metrics; trigger rollback on breach or 30 s of missing data.
+        <!-- Addresses EDGE-IT-041 through EDGE-IT-050, EDGE-IT-052 -->
+        Boundary semantics: STRICT > (not >=) for all thresholds (EDGE-IT-044, EDGE-IT-045).
+        """
+        deadline     = time.monotonic() + self.config.monitoring_window_secs
+        interval     = self.config.metric_check_interval_secs
+        missing_since: Optional[float] = None
+
+        while time.monotonic() < deadline:
+            await asyncio.sleep(interval)
+            try:
+                metrics = await self.metrics_provider.get_metrics()
+                missing_since = None
+            except MetricsUnavailableError:
+                if missing_since is None:
+                    missing_since = time.monotonic()
+                if time.monotonic() - missing_since >= 30:
+                    await self._trigger_rollback(
+                        result, stake, env,
+                        RollbackTriggerMetrics(health_check_failed=True,
+                                               thresholds_breached=["metrics_missing_30s"]),
+                    )
+                    return
+                continue
+
+            breached = []
+            t = self.config.rollback_thresholds
+            if metrics.error_rate_pct is not None and \
+                    metrics.error_rate_pct > t.error_rate_pct:
+                breached.append("error_rate_pct")
+            if metrics.p99_latency_ms is not None and \
+                    metrics.p99_latency_ms > self.config.baseline_p99_ms * t.p99_latency_multiplier:
+                breached.append("p99_latency_ms")
+            if metrics.cpu_utilisation_pct is not None and \
+                    metrics.cpu_utilisation_pct > t.cpu_utilisation_pct:
+                breached.append("cpu_utilisation_pct")
+
+            if breached:
+                metrics.thresholds_breached = breached
+                await self._trigger_rollback(result, stake, env, metrics)
+                return
+
+        result.finalized = True
+        self._audit("ADA_DEPLOYMENT_FINALIZED", deployment_id=result.deployment_id)
+
+    async def _trigger_rollback(self, result: "DeploymentResult",
+                                stake: "MaatStake", env: str,
+                                triggering_metrics: "RollbackTriggerMetrics") -> None:
+        """Sign RollbackProof; execute infra rollback (SLA ≤ 60 s to INITIATED).
+        <!-- Addresses EDGE-IT-051 through EDGE-IT-060 -->
+        deploy_environment in proof MUST match original (EDGE-IT-056, EDGE-IT-074).
+        """
+        rp = RollbackProof(
+            deployment_trace_id=result.deployment_id,
+            agent_id=stake.agent_id,
+            deploy_environment=env,
+            triggering_metrics=triggering_metrics,
+            signed_reasoning=f"Rollback: {triggering_metrics.thresholds_breached}",
+            rollback_status="INITIATED",
+        )
+        rp.sign(self.secret_key)
+        self._audit("ADA_ROLLBACK_INITIATED",
+                    rollback_id=rp.rollback_id, rollback_action_id=rp.rollback_action_id)
+
+        try:
+            ok = await self.executor.rollback(result.deployment_id, "last-known-good")
+            rp.rollback_status = "COMPLETED" if ok else "FAILED"
+            if ok:
+                rp.completed_at = time.time()
+            else:
+                self._audit("ADA_ROLLBACK_FAILED",
+                            note="Human operator alert required — deployment DEGRADED")
+        except Exception as exc:
+            rp.rollback_status = "FAILED"
+            self._audit("ADA_ROLLBACK_EXCEPTION", error=str(exc))
+
+        result.rollback_proof = rp
+
+    def _audit(self, event: str, **kw) -> None:
+        self._audit_log.append({"event": event, "timestamp": time.time(), **kw})
+```
+
+---
+
+### Test Double Protocols
+
+<!-- Addresses EDGE-IT-006, EDGE-IT-008, EDGE-IT-010, EDGE-IT-031, EDGE-IT-068 -->
+
+All integration tests MUST inject test doubles. No test may reach live cloud, blockchain, or KMS.
+
+```python
+@runtime_checkable
+class ObservabilityMetricsProvider(Protocol):
+    async def get_metrics(self) -> RollbackTriggerMetrics: ...
+
+
+class ObservabilityMetricsDouble:
+    """Injectable metrics stub. inject_degradation() queues a single degraded reading.
+    <!-- Addresses EDGE-IT-008, EDGE-IT-043 through EDGE-IT-050 -->
+    """
+    def __init__(self) -> None:
+        self._queue: asyncio.Queue = asyncio.Queue()
+        self._default = RollbackTriggerMetrics(
+            error_rate_pct=0.0, p99_latency_ms=100.0,
+            cpu_utilisation_pct=20.0, health_check_failed=False,
+        )
+        self._unavailable = False
+
+    def set_healthy(self, error_rate_pct=0.0, p99_latency_ms=100.0,
+                    cpu_utilisation_pct=20.0) -> None:
+        self._default = RollbackTriggerMetrics(
+            error_rate_pct=error_rate_pct, p99_latency_ms=p99_latency_ms,
+            cpu_utilisation_pct=cpu_utilisation_pct, health_check_failed=False,
+        )
+
+    def inject_degradation(self, error_rate_pct=None, p99_latency_ms=None,
+                           cpu_utilisation_pct=None, health_check_failed=None) -> None:
+        self._queue.put_nowait(RollbackTriggerMetrics(
+            error_rate_pct=error_rate_pct, p99_latency_ms=p99_latency_ms,
+            cpu_utilisation_pct=cpu_utilisation_pct, health_check_failed=health_check_failed,
+        ))
+
+    def set_unavailable(self, v=True) -> None:
+        self._unavailable = v
+
+    async def get_metrics(self) -> RollbackTriggerMetrics:
+        if self._unavailable:
+            raise MetricsUnavailableError("metrics unavailable (test double)")
+        try:
+            return self._queue.get_nowait()
+        except asyncio.QueueEmpty:
+            return self._default
+
+
+@runtime_checkable
+class StakingLedgerProvider(Protocol):
+    async def get_staked_balance(self, wallet_address: str) -> int: ...
+    async def lock_stake(self, wallet_address: str, amount: int, lock_until: float) -> None: ...
+    async def record_slash(self, record: "SlashRecord") -> None: ...
+
+
+class InMemoryStakingLedger:
+    """In-process stub for StakingLedgerProvider (no blockchain).
+    <!-- Addresses EDGE-IT-009, EDGE-IT-061 through EDGE-IT-068 -->
+    """
+    def __init__(self, initial_balances=None) -> None:
+        self._balances: Dict[str, int] = dict(initial_balances or {})
+        self._locks: Dict[str, Dict] = {}
+        self.slash_records: List = []
+
+    async def get_staked_balance(self, wallet_address: str) -> int:
+        return self._balances.get(wallet_address, 0)
+
+    async def lock_stake(self, wallet_address: str, amount: int, lock_until: float) -> None:
+        if self._balances.get(wallet_address, 0) < amount:
+            raise InsufficientStakeError(
+                f"Insufficient: have {self._balances.get(wallet_address,0)}, need {amount}"
+            )
+        self._locks[wallet_address] = {"amount": amount, "lock_until": lock_until}
+
+    async def record_slash(self, record) -> None:
+        self.slash_records.append(record)
+        self._balances[record.wallet_address] = max(
+            0, self._balances.get(record.wallet_address, 0) - record.slash_amount_wei
+        )
+
+
+@runtime_checkable
+class DeploymentExecutor(Protocol):
+    async def execute(self, deployment_id: str, artifact_ref: str) -> bool: ...
+    async def rollback(self, deployment_id: str, last_known_good: str) -> bool: ...
+
+
+class InMemoryDeploymentExecutor:
+    """In-process stub. Set execute_success/rollback_success before test.
+    <!-- Addresses EDGE-IT-031, EDGE-IT-040, EDGE-IT-057, EDGE-IT-060 -->
+    """
+    def __init__(self, execute_success=True, rollback_success=True) -> None:
+        self.execute_success  = execute_success
+        self.rollback_success = rollback_success
+        self.executions: List[str] = []
+        self.rollbacks:  List[str] = []
+
+    async def execute(self, deployment_id: str, artifact_ref: str) -> bool:
+        self.executions.append(deployment_id)
+        return self.execute_success
+
+    async def rollback(self, deployment_id: str, last_known_good: str) -> bool:
+        self.rollbacks.append(deployment_id)
+        return self.rollback_success
+```
+
+---
+
+### Integration Test Dev Configuration
+
+<!-- Addresses EDGE-IT-006, EDGE-IT-009, EDGE-IT-010, EDGE-IT-041, EDGE-IT-042 -->
+
+```python
+@dataclass
+class RollbackThresholdsConfig:
+    error_rate_pct:                    float = 5.0
+    p99_latency_multiplier:            float = 2.0
+    cpu_utilisation_pct:               float = 95.0
+    health_check_consecutive_failures: int   = 3
+
+
+@dataclass
+class ADAIntegrationTestConfig:
+    """Config for integration tests — no YAML file, no KMS required (AC-6).
+    <!-- Addresses EDGE-IT-006, EDGE-IT-009, EDGE-IT-010 -->
+    """
+    monitoring_window_secs:      float = 5.0    # 5 s (not 900 s)
+    metric_check_interval_secs:  float = 0.05   # 50 ms (not 10 s)
+    baseline_p99_ms:             float = 100.0  # latency multiplier baseline
+    full_autonomous_enabled:     bool  = True   # post-DAO-vote simulation
+    require_human_approval:      bool  = False  # ADA mode
+    dao_vote_required:           bool  = False  # disabled for test isolation
+    rollback_thresholds: RollbackThresholdsConfig = field(
+        default_factory=RollbackThresholdsConfig
+    )
+    slash_pct_false_attestation: int  = 50      # %
+```
+
+Clean-state pytest fixture (EDGE-IT-010):
+
+```python
+import pytest
+
+@pytest.fixture
+def ada_setup():
+    SECRET  = b"integration-test-hmac-secret-key-32b"
+    config  = ADAIntegrationTestConfig()
+    metrics = ObservabilityMetricsDouble()
+    staking = InMemoryStakingLedger()
+    executor = InMemoryDeploymentExecutor()
+    from maatproof.proof import ProofBuilder
+    pb   = ProofBuilder(secret_key=SECRET, model_id="test-v1")
+    orch = AdaOrchestrator(
+        config=config, metrics_provider=metrics,
+        staking_ledger=staking, deployment_executor=executor,
+        secret_key=SECRET, proof_builder=pb,
+    )
+    return orch, metrics, staking, executor, config, SECRET
+```
+
+---
+
+### Proof Verification in the Python Layer (AC-5)
+
+<!-- Addresses EDGE-IT-071 through EDGE-IT-075 -->
+
+> **HMAC vs Ed25519**: Python uses HMAC-SHA256 (symmetric). AC-5's "correct public key"
+> means the shared `secret_key` bytes. No asymmetric key exists in the Python layer.
+
+```python
+from maatproof.proof import ProofVerifier
+
+# Deployment proof (ReasoningProof)
+assert ProofVerifier(secret_key=SECRET).verify(result.proof) is True
+# Wrong key
+assert ProofVerifier(secret_key=b"wrong"*8).verify(result.proof) is False
+# Rollback proof (RollbackProof)
+assert result.rollback_proof.verify(secret_key=SECRET) is True
+assert result.rollback_proof.verify(secret_key=b"wrong"*8) is False
+# Metadata checks
+assert result.proof.metadata["environment"]     == "production"
+assert result.proof.metadata["authority_level"] == "FULL_AUTONOMOUS"
+# Rollback env must match deploy env (EDGE-IT-074)
+assert result.rollback_proof.deploy_environment == "production"
+```
+
+---
+
+### Stake Deduction and Slash Flow (AC-4)
+
+<!-- Addresses EDGE-IT-061 through EDGE-IT-068 -->
+
+**Pre-deployment**: verify on-chain balance ≥ `required_stake_wei(env)`; then lock.
+
+```python
+assert result.stake_locked is True
+assert WALLET in staking._locks
+assert staking._locks[WALLET]["amount"] == stake.required_stake_wei("production")
+```
+
+**Failed attestation**: `execute_success=False` → `SlashRecord` + `DeploymentAttestationError`.
+
+```python
+executor = InMemoryDeploymentExecutor(execute_success=False)
+with pytest.raises(DeploymentAttestationError):
+    await orchestrator.request_deployment(...)
+
+assert len(staking.slash_records) == 1
+slash = staking.slash_records[0]
+assert slash.slash_condition == SlashConditionCode.AGENT_FALSE_ATTESTATION
+assert slash.slash_amount_wei > 0
+assert slash.status == "LOCAL_ONLY"
+```
+
+**Stake restoration** (EDGE-IT-061): No automatic restore on attestation failure.
+Lock remains; slash reduces balance. Dismissed slash → on-chain `MaatToken.mint()`.
+
+---
+
+### Environment String Normalization (EDGE-IT-028, EDGE-IT-029)
+
+`env = deploy_environment.lower().strip()`
+
+| Input | Normalised | Outcome |
+|-------|-----------|---------|
+| `"production"` | `"production"` | Deploy |
+| `"PRODUCTION"` | `"production"` | Deploy |
+| `"  production  "` | `"production"` | Deploy |
+| `""` | `""` | BLOCKED |
+| `"prod"` | `"prod"` | BLOCKED (`"prod"` ≠ `"production"`) |
+
+> **Tests MUST use `"production"`, not `"prod"`.**
+
+---
+
+### Async Test Setup (EDGE-IT-007, EDGE-IT-049, EDGE-IT-050)
+
+```toml
+# pyproject.toml
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+```
+
+Monitoring loop termination patterns:
+
+```python
+# 1: Await finalization
+result = await orch.request_deployment(...)
+await asyncio.sleep(config.monitoring_window_secs + 0.5)
+assert result.finalized is True
+
+# 2: Inject degradation → rollback
+result = await orch.request_deployment(...)
+metrics.inject_degradation(error_rate_pct=10.0)   # > 5.0 threshold
+await asyncio.sleep(config.metric_check_interval_secs * 5)
+assert result.rollback_proof is not None
+
+# 3: BLOCKED — no background task started
+with pytest.raises(AutonomousDeploymentBlockedError):
+    await orch.request_deployment(...)
+```
+
+---
+
+### Rollback SLA (≤ 60 s) Enforcement in Tests (EDGE-IT-051, EDGE-IT-052)
+
+With 50 ms polling, rollback completes in < 1 s. Use `asyncio.wait_for()`:
+
+```python
+result = await orch.request_deployment(...)
+metrics.inject_degradation(error_rate_pct=10.0)
+
+async def _wait():
+    while result.rollback_proof is None:
+        await asyncio.sleep(0.01)
+
+await asyncio.wait_for(_wait(), timeout=10.0)   # well within 60 s SLA
+assert result.rollback_proof.rollback_status in ("INITIATED", "COMPLETED", "FAILED")
+```
+
+---
+
+### DeploymentAuthorityLevel Python 3.11+ Compatibility (EDGE-IT-025)
+
+| Python | Enum variable | `.value` |
+|---|---|---|
+| 3.10 | Annotated class var → Enum member | The dict ✅ |
+| 3.11+ | `dict` annotation → plain class attr | `AttributeError` ❌ |
+
+**Fix in Issue #310.** Tests MUST run on Python 3.10.x until resolved.
+
+---
+
+### Concurrent Deployment Idempotency (EDGE-IT-039)
+
+Two concurrent deploys from the same wallet: first locks stake; second raises
+`InsufficientStakeError` (advisory lock via staking ledger).
+
+```python
+async def test_concurrent_idempotency(ada_setup):
+    orch, _, staking, _, _, _ = ada_setup
+    WALLET = "0xABC"
+    staking._balances[WALLET] = 10_000 * 10**18
+    stake = MaatStake(wallet_address=WALLET, staked_amount=10_000 * 10**18, agent_id="a1")
+    score = DeploymentScore(
+        deterministic_gates=Decimal("1"), dre_consensus=Decimal("1"),
+        logic_verification=Decimal("1"), validator_attestation=Decimal("1"),
+        risk_score=Decimal("1"),
+    )
+    score.compute_total()
+    risk = RiskAssessment(security_scan_findings=0,
+                          severity_breakdown={"CRITICAL":0,"HIGH":0,"MEDIUM":0,"LOW":0})
+
+    t1 = asyncio.create_task(orch.request_deployment(score, risk, stake, "production", "a1"))
+    t2 = asyncio.create_task(orch.request_deployment(score, risk, stake, "production", "a1"))
+    results = await asyncio.gather(t1, t2, return_exceptions=True)
+
+    assert sum(1 for r in results if isinstance(r, DeploymentResult)) == 1
+    assert sum(1 for r in results if isinstance(r, InsufficientStakeError)) == 1
+```
