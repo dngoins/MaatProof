@@ -220,14 +220,22 @@ graph LR
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per feature | $2,326 | $148 | **94%** |
+| Build cost per feature (baseline) | $2,326 | $148 | **94%** |
+| Build cost — Audit Logging (complex, 9 issues) | $63,415 | $4,212 | **93%** |
+| Annual developer hours reclaimed | — | 3,104 hrs/yr | **$186,240/yr** |
+| Compliance audit prep (SOC2 + HIPAA + SOX) | $9,840/yr | $155/yr | **$9,685/yr** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **98% faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| DORA rating | Low | **Elite** | — |
+| HMAC key rotation downtime | 4 hours | 0 (automated) | **100% reduction** |
+| Annual infra cost (standard / GCP hybrid) | — | **$34/yr** | — |
+| 5-year TCO savings | — | **$1.51M – $3.79M** | — |
+| Year 1 ROI | — | **15,227%** | — |
+| DORA rating | Low | **Elite (top 10%)** | — |
 
-> _Last estimated: 2026-04-23 | [Full cost report →](docs/reports/cost-estimation-report.md)_
+> _Last estimated: 2026-04-23 · Issue #118 [Audit Logging] Validation & Sign-off · Run #3_  
+> _[Full cost report →](docs/reports/cost-estimation-report.md) · [Interactive summary →](docs/reports/cost-summary.html)_
 
 ---
 
