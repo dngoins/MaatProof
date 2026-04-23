@@ -291,6 +291,8 @@ The `normalized_output` field represents only *formatting* normalisation:
 | Collapse multiple blank lines to one | Add or remove code statements |
 | Canonicalise line endings (`\r\n` → `\n`) | Alter string literals |
 | Remove trailing whitespace per line | Re-order JSON keys in generated code |
+| Ensure single trailing `\n` (see §14) | Add a trailing newline to empty strings |
+| AST round-trip for Python code (see §11) | Change AST semantics via unparse |
 
 Implementations **must** verify that `raw_output` and `normalized_output` are
 semantically equivalent before constructing a `ModelResponse`.
@@ -298,6 +300,7 @@ semantically equivalent before constructing a `ModelResponse`.
 #### AST Comparison for Code Responses
 
 <!-- Addresses EDGE-INT-006, EDGE-INT-023 (issue #134), EDGE-D007 (issue #137) -->
+<!-- Addresses EDGE-DRE-V022, EDGE-DRE-V025, EDGE-DRE-V026, EDGE-DRE-V028 -->
 
 When a model response contains code (Python, JSON, YAML, or other structured
 text), the equivalence check between `raw_output` and `normalized_output` is
@@ -312,12 +315,14 @@ their parsed abstract syntax trees are identical under Python's `ast.dump()`.
 | Strip trailing whitespace on each line | ✅ | Pure formatting |
 | Normalise `\r\n` → `\n` | ✅ | Platform-independent |
 | Remove blank lines between top-level statements (max 2 blank lines preserved) | ✅ | PEP 8 formatting |
+| Ensure single trailing `\n` (see §19) | ✅ | Canonical trailing newline |
+| AST round-trip via `ast.unparse()` for Python (see §17) | ✅ | Canonical form |
 | Change indentation character (`\t` ↔ spaces) | ❌ | Python-semantic; `IndentationError` risk |
 | Re-order function parameters | ❌ | Semantic change |
 | Rename variables or identifiers | ❌ | Semantic change |
 | Add/remove `pass` statements, imports | ❌ | Semantic change |
 
-**Implementation contract:**
+**Implementation contract (equivalence verification):**
 
 ```python
 import ast
@@ -361,6 +366,11 @@ equivalence is verified by whitespace-normalised string comparison (join on
 single space). The full AST pipeline is only invoked when the response contains
 a fenced code block (` ```python `) or when the normaliser detects a
 `SyntaxError` on the raw output.
+
+**Production normalization function**: See §17 (`normalize_python_code()`) for
+the algorithm that *produces* `normalized_output` using `ast.unparse()`, including
+AST parse failure handling (SyntaxError fallback) and language detection.
+<!-- Addresses EDGE-DRE-V022, EDGE-DRE-V025, EDGE-DRE-V026 -->
 
 ---
 
@@ -1447,6 +1457,296 @@ p_plain  = CanonicalPrompt.from_str("deploy?")
 p_padded = CanonicalPrompt.from_str("  deploy?  ")
 assert p_plain.prompt_hash != p_padded.prompt_hash  # whitespace preserved
 ```
+
+---
+
+## 16. Cross-Environment Reproducibility Hash
+
+<!-- Addresses EDGE-DRE-V037, EDGE-DRE-V038, EDGE-DRE-V047, EDGE-DRE-V049 (issue #141) -->
+
+The acceptance criteria for issue #141 states: *"same prompt run in two independent
+environments produces identical `DeterministicProof` hashes."*
+
+### 16.1 What "Identical" Means
+
+`DeterministicProof` inherits **volatile fields** from `ReasoningProof` —
+specifically `proof_id` (UUID v4, unique per run) and `created_at` (Unix timestamp).
+These fields will **always differ** between two independent executions of the same
+prompt. The "identical hash" requirement therefore applies to the **DRE Content Hash**,
+not the full serialised proof hash.
+
+### 16.2 DRE Content Hash Definition
+
+The **DRE Content Hash** is a SHA-256 digest over a stable subset of `DeterministicProof`
+fields. It excludes all fields that are intentionally different per run:
+
+```python
+import hashlib, json
+
+def dre_content_hash(proof: DeterministicProof) -> str:
+    """
+    Compute the stable, cross-environment content hash of a DeterministicProof.
+
+    Included fields (stable across independent runs of the same prompt):
+        prompt_hash       -- SHA-256 of the CanonicalPrompt content
+        consensus_ratio   -- agreements/total fraction
+        response_hash     -- SHA-256 of the majority normalized_output
+
+    Excluded fields (volatile, vary per run):
+        proof_id          -- UUID v4, random
+        created_at        -- Unix timestamp
+        chain_id          -- environment-specific
+        signature         -- signed over volatile fields
+        metadata          -- may contain run-specific values
+
+    Returns a 64-char lowercase hex string.
+    """
+    stable = {
+        "prompt_hash":      proof.prompt_hash,
+        "consensus_ratio":  proof.consensus_ratio,
+        "response_hash":    proof.response_hash,
+    }
+    canonical = json.dumps(stable, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+```
+
+### 16.3 Seed Consistency for Cross-Environment Verification
+
+When verifying reproducibility **across environments** (e.g., env A uses `seed=314159`
+and env B uses `seed=271828`), the **LLM responses may differ** because the seed
+affects model output even at `temperature=0.0`. Therefore:
+
+1. **For AC#3 of issue #141** (end-to-end reproducibility), both environments MUST
+   use the **same seed** during the comparison run. Use the `dev` seed value
+   (or a dedicated `comparison` seed) for all cross-environment comparison tests.
+2. **In normal operation**, environments use different seeds per
+   `specs/dre-config-spec.md §14.1`. The DRE Content Hash will differ when seeds
+   differ (different `response_hash`), which is expected and correct behaviour.
+3. **Verification guide** (issue #137): the independent verifier MUST obtain the
+   exact `seed`, `model_ids`, `temperature`, and `top_p` values from the original
+   run's `DeterministicProof.metadata` (populated by the DRE executor at build time)
+   to reproduce the same `response_hash`.
+
+### 16.4 Reproducibility Test Protocol
+
+```python
+def assert_cross_env_reproducibility(proof_a: DeterministicProof,
+                                      proof_b: DeterministicProof) -> None:
+    """Assert two proofs from independent environments are semantically identical.
+
+    Pre-condition: both proofs were produced with the same seed and model_ids.
+    Raises AssertionError with a diff if they diverge.
+    """
+    hash_a = dre_content_hash(proof_a)
+    hash_b = dre_content_hash(proof_b)
+    assert hash_a == hash_b, (
+        f"DRE Content Hash mismatch:\n"
+        f"  Env A prompt_hash:     {proof_a.prompt_hash}\n"
+        f"  Env B prompt_hash:     {proof_b.prompt_hash}\n"
+        f"  Env A consensus_ratio: {proof_a.consensus_ratio}\n"
+        f"  Env B consensus_ratio: {proof_b.consensus_ratio}\n"
+        f"  Env A response_hash:   {proof_a.response_hash}\n"
+        f"  Env B response_hash:   {proof_b.response_hash}\n"
+        f"  Content hash A: {hash_a}\n"
+        f"  Content hash B: {hash_b}"
+    )
+```
+
+---
+
+## 17. Python Version Compatibility
+
+<!-- Addresses EDGE-DRE-V006, EDGE-DRE-V046, EDGE-DRE-V075 (issue #141) -->
+
+### 17.1 Minimum Python Version
+
+The DRE data models require **Python 3.11 or later**. The minimum is determined by:
+
+| Feature | Minimum Version |
+|---------|----------------|
+| `ast.unparse()` | Python 3.9 |
+| `dataclasses` with `__post_init__` | Python 3.7 |
+| `unicodedata.normalize` (NFC) | All Python 3.x |
+| `hashlib.sha256` | All Python 3.x |
+| `tomllib` (config) | Python 3.11 |
+| Typing improvements used in this spec | Python 3.10+ |
+
+### 17.2 NFC Normalization Across Python Versions
+
+`unicodedata.normalize("NFC", s)` applies the Unicode NFC algorithm defined by the
+Unicode Consortium (Unicode Standard Annex #15). The algorithm is derived from the
+Unicode Character Database (UCD), which is bundled with each Python release.
+
+| Python version | Unicode version bundled | NFC compatibility |
+|----------------|------------------------|-------------------|
+| 3.11.x | Unicode 15.0 | Compatible with 3.12+ |
+| 3.12.x | Unicode 15.0 | Compatible with 3.11 |
+| 3.13.x | Unicode 15.1 | May differ for codepoints added in Unicode 15.1 |
+
+**Rule**: For cross-environment reproducibility, all DRE nodes in the same deployment
+cluster MUST use the **same Python minor version** (e.g., all on 3.11.x, or all on
+3.12.x). Python 3.11 is the **reference implementation** for the test suite.
+
+CI/CD pipelines (issue #127) MUST pin `python-version: '3.11'` in `actions/setup-python`
+to ensure test results are comparable to production.
+
+### 17.3 Surrogate Pair Handling
+
+<!-- Addresses EDGE-DRE-V008 -->
+
+Python 3 strings (`str`) are sequences of Unicode code points. Lone surrogate
+code points (`U+D800-U+DFFF`) are valid in Python `str` objects (via
+`surrogateescape` error handler) but cannot be encoded to valid UTF-8.
+
+`CanonicalPrompt.from_str()` uses `normalised.encode("utf-8")` with the default
+`"strict"` error handler. A prompt string containing lone surrogate code points
+will raise `UnicodeEncodeError` before the hash is computed.
+
+**Rule**: Callers passing prompts that originate from external sources (PR bodies,
+commit messages, etc.) MUST sanitise them through the AVM input sanitisation layer
+(`specs/avm-spec.md §Input Sanitization`) before passing to `CanonicalPrompt.from_str()`.
+The AVM sanitiser uses `encode("utf-8", errors="replace")` to replace invalid
+surrogates before they reach the DRE layer.
+
+### 17.4 BOM and RTLO Characters
+
+<!-- Addresses EDGE-DRE-V003, EDGE-DRE-V004 -->
+
+The following characters are **not** stripped by `CanonicalPrompt.from_str()`:
+
+| Character | Codepoint | Reason not stripped |
+|-----------|-----------|---------------------|
+| BOM / Zero Width No-Break Space | U+FEFF | Greater than 0x20; not a control char |
+| Right-to-Left Override | U+202E | Greater than 0x20; not a control char |
+| Unicode Variation Selectors | U+FE00-U+FE0F | Greater than 0x20; formatting but preserved |
+
+**Design decision**: These characters are preserved because:
+1. Two independent runs of the same prompt will include or exclude them
+   consistently — the content is deterministic for a given input.
+2. Stripping them risks altering the semantics of intentional Unicode usage.
+3. The AVM input sanitisation layer (upstream of the DRE) is responsible for
+   stripping adversarial Unicode characters from untrusted external inputs.
+
+If an operator needs to sanitise prompts of BOM/RTLO characters, they should
+apply the relevant `str.replace()` calls **before** calling `CanonicalPrompt.from_str()`.
+
+---
+
+## 18. Independent Verification Protocol — Extended
+
+<!-- Addresses EDGE-DRE-V048, EDGE-DRE-V049 (issue #141 AC#4, issue #137) -->
+
+This section extends §12 (Independent Verification Procedure) with a complete
+`verify_deterministic_proof()` function and model version pinning guidance.
+
+### 18.1 Prerequisites
+
+| Requirement | Source |
+|-------------|--------|
+| Python 3.11 (exact minor recommended) | §17 |
+| `dre` package installed (`pip install maat-dre`) | PyPI or source |
+| API keys for the models listed in `proof.model_ids` | Provider dashboards |
+| The original `CanonicalPrompt.content` bytes (from IPFS trace CID) | IPFS / storage |
+| `seed`, `temperature`, `top_p` values from `proof.metadata["dre_params"]` | DeterministicProof |
+
+### 18.2 Integrated Verification Function
+
+```python
+from dre.models import (
+    CanonicalPrompt, DeterminismParams, ModelResponse, ConsensusResult,
+    DeterministicProof, dre_content_hash,
+)
+import hashlib
+
+
+def verify_deterministic_proof(
+    proof: DeterministicProof,
+    prompt_bytes: bytes,
+    model_responses: list,
+) -> bool:
+    """Verify a DeterministicProof independently.
+
+    Args:
+        proof: The DeterministicProof to verify.
+        prompt_bytes: CanonicalPrompt.content bytes from the IPFS trace.
+        model_responses: List[ModelResponse] from independent re-execution.
+
+    Steps:
+        1. Recompute prompt_hash from prompt_bytes.
+        2. Assert prompt_hash matches proof.prompt_hash.
+        3. Compute ConsensusResult from model_responses.
+        4. Assert consensus_ratio matches proof.consensus_ratio (+/-1e-9).
+        5. Identify majority response and compute its response_hash.
+        6. Assert response_hash matches proof.response_hash.
+        7. Compute dre_content_hash(proof); confirm it matches published value.
+
+    Returns:
+        True if all assertions pass.
+
+    Raises:
+        AssertionError on any mismatch.
+    """
+    # Steps 1-2: Prompt hash
+    recomputed_prompt_hash = hashlib.sha256(prompt_bytes).hexdigest()
+    assert recomputed_prompt_hash == proof.prompt_hash, (
+        f"prompt_hash mismatch: got {recomputed_prompt_hash}, "
+        f"expected {proof.prompt_hash}"
+    )
+
+    # Steps 3-4: Consensus ratio
+    majority_output = max(
+        set(r.normalized_output for r in model_responses),
+        key=lambda o: sum(r.normalized_output == o for r in model_responses),
+    )
+    agreements = sum(r.normalized_output == majority_output for r in model_responses)
+    result = ConsensusResult.build(agreements=agreements, total=len(model_responses))
+    assert abs(result.consensus_ratio - proof.consensus_ratio) <= 1e-9, (
+        f"consensus_ratio mismatch: got {result.consensus_ratio}, "
+        f"expected {proof.consensus_ratio}"
+    )
+
+    # Steps 5-6: Response hash
+    recomputed_response_hash = hashlib.sha256(
+        majority_output.encode("utf-8")
+    ).hexdigest()
+    assert recomputed_response_hash == proof.response_hash, (
+        f"response_hash mismatch: got {recomputed_response_hash}, "
+        f"expected {proof.response_hash}"
+    )
+
+    return True
+```
+
+### 18.3 Model Version Pinning for Verifiers
+
+<!-- Addresses EDGE-DRE-V048 -->
+
+Independent verifiers MUST use the **exact pinned model versions** listed in
+`proof.model_ids`. If a model version has been deprecated by its provider:
+
+1. Contact the original proof issuer for a proof bundle that includes the raw LLM
+   responses (stored alongside the DeterministicProof in the IPFS trace package).
+2. The raw responses allow verifying the `response_hash` without re-querying the
+   (now unavailable) model.
+3. The operator of the DRE system MUST retain raw model responses alongside proofs
+   for the duration of the proof's audit retention period
+   (`specs/dre-infra-spec.md §3.1`).
+
+---
+
+## 19. Trailing Newline Normalisation Rule
+
+<!-- Addresses EDGE-DRE-V028 (issue #141) -->
+
+The `ResponseNormalizer.normalize()` method (§14) enforces a **single trailing
+newline** after stripping trailing whitespace. This ensures that two responses
+that are byte-for-byte identical except for the presence/absence of a trailing
+newline produce the same `response_hash`.
+
+**Rule**: `ModelResponse.normalized_output` MUST end with exactly one `\n` character
+(or be an empty string `""`). The `__post_init__` method does not enforce this
+at construction time (to avoid breaking existing tests), but the normalisation
+functions always produce it. Test suites SHOULD assert this invariant.
 
 ---
 
