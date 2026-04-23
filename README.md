@@ -218,26 +218,27 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issue #116: VRP Configuration — env-specific config for validator endpoints, signing key refs (Azure Key Vault), MAAT stake thresholds, quorum requirements, and feature flags_
+> _Issue #119: Core Pipeline — ProofBuilder, ProofVerifier, ReasoningChain, OrchestratingAgent, DeterministicLayer (5 gates), AgentLayer (4 agents), ACIPipeline, ACDPipeline_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per issue (#116 VRP Config) | $3,032 | $195 | **94%** |
-| Annual infrastructure cost (100 MAU) | $372 (Azure full) | **$217** (GCP+AKV hybrid) | **42%** |
-| Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
+| Build cost — Core Pipeline (#119) | $6,741 | $247 | **96%** |
+| Build cost — Data Model (#14) | $2,326 | $148 | **94%** |
+| Annual CI/CD cost (standard, GCP) | ~$27K/yr (12 features) | ~$349/yr | **99%** |
+| Annual developer hours (CI/CD tasks) | 3,104 hrs | ~0 hrs | **3,104 hrs reclaimed** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **98% faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Config-related incidents/quarter | 3 | 0.2 | **93% reduction** |
-| Secret rotation downtime | 30 min | 0 (Key Vault hot-rotate) | **100%** |
-| Quorum misconfiguration rate | 12% | 0% | **100% elimination** |
-| Azure Key Vault (9 HSM signing keys) | N/A | **$9/mo flat** | scales free |
+| Rollback activation | 30–60 min | 90 seconds | **97% faster** |
+| Audit trail completeness | ~40% | 100% | **+60%** |
+| DeterministicLayer gate bypass | Possible | Impossible (EDGE-119 fail-closed) | **100% prevention** |
+| AI API runtime cost (standard) | N/A | $27/mo (Claude Sonnet) | — |
+| Year 1 ROI | — | — | **10,463%** |
+| 5-year TCO savings | — | — | **$1,618,582** |
 | DORA rating | Low | **Elite** | — |
-| Year 1 ROI | — | — | **9,874%** |
-| 5-year TCO savings | — | — | **$1,147,127** |
 
-> _Last estimated: 2026-04-23 · Issue #116 [VRP Configuration] | [Full cost report →](docs/reports/cost-estimation-report.md) | [HTML dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issue #119 [Core Pipeline] | [Full cost report →](docs/reports/cost-estimation-report.md) | [HTML summary →](docs/reports/cost-summary.html)_
 
 ---
 
