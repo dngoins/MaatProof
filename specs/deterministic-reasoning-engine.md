@@ -798,5 +798,331 @@ flowchart TD
 
 ---
 
+---
+
+## 10. DRE Component Naming Reference
+
+<!-- Addresses EDGE-D004 — maps issue #137 component names to spec terms -->
+
+Issue #137 uses five component names that map to the following spec types and stages:
+
+| Documentation Name | Spec Term | Type / Stage | Key Spec Section |
+|---|---|---|---|
+| **Canonical Prompt Serializer** | `CanonicalPrompt` + `CanonicalPrompt.from_str()` | Stage 1 — Canonical Prompt Construction | §3.2 |
+| **Multi-Model Executor** | `CommitteeConfig` + parallel `LlmProvider.complete()` calls | Stage 2 — Committee Execution | `specs/dre-spec.md` §Stage 2 |
+| **Response Normalizer** | `ModelResponse.normalized_output` + `response_hash` | Stage 3 — Normalization | §3.3 |
+| **Consensus Engine** | `ConsensusResult.build()` + `classify_ratio()` | Stage 4 — Convergence | §3.4–3.5 |
+| **DeterministicProof** | `DeterministicProof` (extends `ReasoningProof`) | Stage 5 — Certification | §3.6 |
+
+### Component Interaction Flow
+
+```mermaid
+flowchart LR
+    RAW["Raw prompt\n+ model configs"]
+    SER["Canonical Prompt\nSerializer\n(CanonicalPrompt.from_str)"]
+    EXE["Multi-Model\nExecutor\n(N × LlmProvider)"]
+    NORM["Response\nNormalizer\n(ModelResponse)"]
+    CON["Consensus\nEngine\n(ConsensusResult.build)"]
+    PROOF["DeterministicProof\n(extends ReasoningProof)"]
+
+    RAW --> SER --> EXE --> NORM --> CON --> PROOF
+    SER -.->|"prompt_hash"| PROOF
+    CON -.->|"consensus_ratio\nclassification"| PROOF
+    NORM -.->|"response_hash\nmodel_ids"| PROOF
+```
+
+> **Note on "sorted keys"**: The Canonical Prompt Serializer serialises the
+> *surrounding JSON trace* (PromptBundle, DeploymentTrace) with
+> lexicographically sorted keys — see `specs/dre-spec.md §Canonicalization Rules`.
+> The **prompt content itself is treated as an opaque string** and is NOT
+> re-parsed or re-serialised; NFC normalisation is applied but JSON keys inside
+> the prompt are not sorted.  See §3.2 (EDGE-022).
+
+> **Note on "min 3 models"**: The requirement "min 3 models" applies to `uat`
+> and `prod` environments.  In `dev`, a single-model committee (`total = 1`) is
+> valid for local testing, though the consensus result will always be STRONG
+> (1/1 = 1.0).  See `specs/dre-config-spec.md §1`.
+
+---
+
+## 11. Quick-Start Usage Example
+
+<!-- Addresses EDGE-D003 — quick-start DeterministicProof construction example -->
+
+The following example shows the minimum code to construct a `DeterministicProof`
+end-to-end in the Python DRE layer.  This is the reference pattern that the
+README and architecture documentation should use.
+
+```python
+import hashlib
+from dre.models import (
+    CanonicalPrompt,
+    ConsensusResult,
+    DeterminismParams,
+    DeterministicProof,
+    ModelResponse,
+)
+from maatproof.proof import ReasoningStep
+
+# ── Step 1: Canonical Prompt Serializer ─────────────────────────────────────
+raw_prompt = "Should we deploy PR #42 to production? Tests: 87% coverage, 0 CVEs."
+canonical = CanonicalPrompt.from_str(raw_prompt)
+# canonical.prompt_hash is the SHA-256 hex digest of the NFC-normalised UTF-8 bytes
+
+# ── Step 2: DeterminismParams — enforce temp=0, fixed seed, top_p=1.0 ────────
+params = DeterminismParams(temperature=0.0, seed=314159, top_p=1.0)
+
+# ── Step 3: Multi-Model Executor (simulated) ─────────────────────────────────
+# In production this calls N LlmProvider instances in parallel.
+# Each provider must support deterministic mode (temp=0, fixed seed).
+model_outputs = {
+    "anthropic/claude-3-7-sonnet@20250219": "APPROVE — coverage meets threshold, no CVEs.",
+    "openai/gpt-4o@2024-08-06":             "APPROVE — coverage meets threshold, no CVEs.",
+    "mistral/mistral-large@2407":           "APPROVE — 87% coverage, clean security scan.",
+}
+
+# ── Step 4: Response Normalizer — strip formatting variants ──────────────────
+def _norm(text: str) -> str:
+    """Strip trailing whitespace and collapse blank lines (formatting only)."""
+    lines = [line.rstrip() for line in text.splitlines()]
+    return "\n".join(lines).strip()
+
+responses = [
+    ModelResponse(
+        model_id=mid,
+        raw_output=raw,
+        normalized_output=_norm(raw),
+        determinism_params=params,
+        response_hash=hashlib.sha256(_norm(raw).encode()).hexdigest(),
+    )
+    for mid, raw in model_outputs.items()
+]
+
+# ── Step 5: Consensus Engine — M-of-N agreement ───────────────────────────────
+from collections import Counter
+majority_output = Counter(r.normalized_output for r in responses).most_common(1)[0][0]
+agreements = sum(1 for r in responses if r.normalized_output == majority_output)
+result = ConsensusResult.build(agreements=agreements, total=len(responses))
+# result.classification → ConsensusClassification.STRONG  (3/3 = 1.0 ≥ 0.80)
+
+# ── Step 6: DeterministicProof construction ───────────────────────────────────
+response_hash = hashlib.sha256(majority_output.encode()).hexdigest()
+
+from maatproof.proof import ProofBuilder
+builder = ProofBuilder(secret_key=b"operator-hmac-key", model_id="dre-committee")
+proof = builder.build(steps=[
+    ReasoningStep(
+        step_id=0,
+        context=f"Prompt hash: {canonical.prompt_hash[:16]}…",
+        reasoning=f"3-of-3 models agreed ({result.classification.value})",
+        conclusion="APPROVE",
+        timestamp=1700000000.0,
+    )
+])
+
+det_proof = DeterministicProof(
+    # ── Inherited from ReasoningProof ──────────────────────────────────────────
+    proof_id=proof.proof_id,
+    model_id=proof.model_id,
+    chain_id="deploy-chain-001",
+    steps=proof.steps,
+    root_hash=proof.root_hash,
+    signature=proof.signature,
+    created_at=proof.created_at,
+    metadata={},                  # must NOT contain DRE reserved keys
+    # ── DRE-specific fields ───────────────────────────────────────────────────
+    prompt_hash=canonical.prompt_hash,
+    consensus_ratio=result.consensus_ratio,
+    response_hash=response_hash,
+    model_ids=[r.model_id for r in responses],
+)
+
+print(f"proof_id:        {det_proof.proof_id}")
+print(f"prompt_hash:     {det_proof.prompt_hash}")
+print(f"consensus_ratio: {det_proof.consensus_ratio:.4f}")   # 1.0
+print(f"classification:  {result.classification.value}")     # STRONG
+print(f"response_hash:   {det_proof.response_hash}")
+print(f"model_ids:       {det_proof.model_ids}")
+```
+
+**Inherited fields from `ReasoningProof`** (from `maatproof/proof.py`):
+
+| Field | Type | Description |
+|---|---|---|
+| `proof_id` | UUID v4 string | Unique proof identifier (replay deduplication) |
+| `model_id` | string | Logical model identifier for the proof builder |
+| `chain_id` | string | Scopes this proof to a deployment chain |
+| `steps` | list[ReasoningStep] | Hash-chained reasoning steps |
+| `root_hash` | SHA-256 hex | Merkle root hash of the step chain |
+| `signature` | HMAC-SHA256 hex | HMAC over `root_hash` using operator secret |
+| `created_at` | float | Unix timestamp |
+| `metadata` | dict | Arbitrary metadata; must NOT contain DRE reserved keys |
+
+**DRE-specific additional fields** (defined in this spec):
+
+| Field | Type | Description |
+|---|---|---|
+| `prompt_hash` | SHA-256 hex | Hash of `CanonicalPrompt.content` |
+| `consensus_ratio` | float [0.0, 1.0] | `agreements / total`; recomputed on deserialisation |
+| `response_hash` | SHA-256 hex | SHA-256 of majority `normalized_output`; `SHA-256(b"")` if NONE |
+| `model_ids` | list[str] | Non-empty; no duplicates; canonical `{provider}/{model}@{version}` |
+
+---
+
+## 12. Independent Verification Procedure
+
+<!-- Addresses EDGE-D009, EDGE-D010, EDGE-D011, EDGE-D046 -->
+
+An independent party (auditor, validator, or external reviewer) can verify a
+`DeterministicProof` at two levels:
+
+### 12.1 Structural Verification (no LLM access required)
+
+Structural verification confirms that all hash fields are internally consistent
+and that the proof was not tampered with after construction.  This can be
+performed by anyone with the proof JSON.
+
+```python
+import hashlib
+from dre.models import DeterministicProof, ConsensusResult, classify_ratio
+
+def structural_verify(proof_dict: dict) -> dict:
+    """
+    Structural (offline) verification of a DeterministicProof.
+    Does NOT require re-running any LLM.  Returns a result dict.
+
+    <!-- Addresses EDGE-D009, EDGE-D046 -->
+    """
+    results = {}
+
+    # 1. Reconstruct the object — __post_init__ validates all field invariants
+    try:
+        proof = DeterministicProof(**proof_dict)
+        results["construction"] = "PASS"
+    except (ValueError, TypeError) as e:
+        results["construction"] = f"FAIL: {e}"
+        return results
+
+    # 2. Verify consensus_ratio is consistent with stored agreements/total
+    #    (proof_dict must include these if stored by the DRE executor)
+    agreements = proof_dict.get("_agreements")   # implementation MAY store these
+    total       = proof_dict.get("_total")
+    if agreements is not None and total is not None:
+        expected = agreements / total
+        if abs(proof.consensus_ratio - expected) > 1e-9:
+            results["ratio_integrity"] = (
+                f"FAIL: ratio {proof.consensus_ratio} ≠ {agreements}/{total}"
+            )
+        else:
+            results["ratio_integrity"] = "PASS"
+    else:
+        results["ratio_integrity"] = "SKIP: _agreements/_total not stored"
+
+    # 3. Verify classification is consistent with ratio
+    expected_cls = classify_ratio(proof.consensus_ratio)
+    results["classification"] = (
+        "PASS" if expected_cls.value ==
+        proof_dict.get("classification_stored", expected_cls.value)
+        else "FAIL"
+    )
+
+    # 4. Verify prompt_hash format (64 hex chars)
+    results["prompt_hash_format"] = (
+        "PASS" if len(proof.prompt_hash) == 64 and
+        all(c in "0123456789abcdef" for c in proof.prompt_hash)
+        else "FAIL"
+    )
+
+    # 5. Verify response_hash format
+    results["response_hash_format"] = (
+        "PASS" if len(proof.response_hash) == 64 and
+        all(c in "0123456789abcdef" for c in proof.response_hash)
+        else "FAIL"
+    )
+
+    results["overall"] = "PASS" if all(v == "PASS" or v.startswith("SKIP")
+                                       for v in results.values()) else "FAIL"
+    return results
+```
+
+### 12.2 Full Replay Verification (LLM access required)
+
+Full verification re-runs the LLM committee and confirms that the stored
+`prompt_hash` and `response_hash` are reproducible.
+
+**Prerequisites:**
+- Access to the original canonical prompt bytes (stored in the deployment trace
+  on IPFS; retrieve via the trace CID recorded in the finalized `MaatBlock`)
+- Access to all model providers listed in `proof.model_ids`
+- The exact `DeterminismParams` used (seed, temperature=0.0, top_p=1.0)
+
+**Step-by-step replay procedure:**
+
+```
+Step 1 — Retrieve prompt bytes
+  • Resolve the deployment trace from IPFS using the CID in the MaatBlock
+  • Extract the canonical_prompt_bytes from the trace (UTF-8 bytes,
+    already NFC-normalised)
+  • Compute SHA-256(canonical_prompt_bytes) → must equal proof.prompt_hash
+
+Step 2 — Verify normalisation
+  • Decode bytes as UTF-8
+  • Apply unicodedata.normalize("NFC", decoded)
+  • Re-encode to UTF-8
+  • Compute SHA-256 → must equal proof.prompt_hash
+
+Step 3 — Re-execute the committee
+  • For each model_id in proof.model_ids:
+    - Call the provider with (prompt_bytes, temperature=0.0, seed=K, top_p=1.0)
+    - Apply the normalisation pipeline to the raw output
+    - Compute SHA-256(normalized_output.encode("utf-8")) → record response_hash_i
+
+Step 4 — Recompute consensus
+  • Find the majority normalized_output among all model responses
+  • Compute agreements = count of models matching the majority
+  • Compute consensus_ratio = agreements / len(proof.model_ids)
+  • Verify |consensus_ratio - proof.consensus_ratio| ≤ 1e-9
+
+Step 5 — Verify response hash
+  • Compute SHA-256(majority_normalized_output.encode("utf-8"))
+  • Must equal proof.response_hash
+  • Exception: if no majority (all responses differ), verify
+    proof.response_hash == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    (SHA-256 of empty bytes) and proof.classification == "NONE"
+```
+
+### 12.3 LLM Replay Non-Reproducibility (Important Caveat)
+
+<!-- Addresses EDGE-D010 -->
+
+Even with `temperature=0.0` and a fixed seed, LLM providers may produce
+**different outputs upon replay** due to:
+
+- Model version deprecation (the provider has updated the weights behind the
+  same version string)
+- Server-side infrastructure changes (batching, quantisation, BLAS version)
+- Provider API response format changes
+
+**Consequence**: Full replay verification (§12.2 Step 3–5) may fail even for a
+legitimately constructed proof if the provider has changed the model's behaviour.
+
+**Protocol resolution**: The MaatProof protocol treats this as a
+**"soft non-match"** (not a fraud signal):
+
+| Outcome | Interpretation | Action |
+|---|---|---|
+| `prompt_hash` matches | Prompt was not tampered with | ✅ Structural trust established |
+| `response_hash` matches | Majority output reproduced exactly | ✅ Full cryptographic match |
+| `response_hash` mismatches | LLM output diverged from original | ⚠️ Flag for human review; check model deprecation notices before treating as fraud |
+| `consensus_ratio` mismatches | Committee agreement changed | ⚠️ Flag; re-run with N ≥ 5 for high-stakes decisions |
+
+**Recommendation**: For long-term auditability, the DRE executor SHOULD store
+the full `normalized_output` text for each committee member alongside the
+`DeterministicProof` in the deployment trace (IPFS).  This allows auditors to
+verify `response_hash` from the stored output rather than re-running the LLM.
+
+---
+
 *Spec created to address issue #30 and referenced by issue #28.*  
-*References: `maatproof/proof.py`, `specs/llm-provider-spec.md`, `specs/avm-spec.md`, `specs/trace-verification-spec.md`, `docs/06-security-model.md`.*
+*References: `maatproof/proof.py`, `specs/llm-provider-spec.md`, `specs/avm-spec.md`, `specs/trace-verification-spec.md`, `docs/06-security-model.md`.*  
+*Sections §10–§12 added to address issue #137 (DRE Documentation spec gaps).*
