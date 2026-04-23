@@ -304,24 +304,26 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issue #31: VRP Data Model/Schema — VerifiableStep, InferenceRule (7 rules), AttestationRecord (HMAC-SHA256 + ECDSA P-256), VerificationLevel, ProofChain_
+> _Issue #134: DRE Integration Tests — CanonicalPromptSerializer · MultiModelExecutor (N=3, temp=0) · ResponseNormalizer (AST) · ConsensusEngine (STRONG/MAJORITY/NO-CONSENSUS) · DeterministicProof_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per issue (VRP Data Model #31) | $3,167 | $195 | **94%** |
+| Build cost — Issue #134 (DRE Integration Tests) | $2,929 | $206 | **93%** |
+| Build cost — Issue #119 (Core Pipeline) | $6,741 | $247 | **96%** |
+| Combined build cost (#14 + #119 + #134) | $11,997 | $601 | **95%** |
 | Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Cryptographic test coverage | 40% manual | 95% automated | **+55pp** |
-| VRP runtime cost (GCP standard) | — | **$0.16/mo** | ECDSA P-256 incl. |
-| Annual infra cost (100 MAU, GCP) | — | **$31/yr** | — |
+| DRE CI test cost (stubbed models, GCP free tier) | — | **$0/mo** | 100% free |
+| DRE runtime cost (N=3 consensus, GCP standard) | — | **$34/mo** | +$12/mo w/ caching |
+| Annual infra + AI cost (100 MAU, GCP, all issues) | — | **$757/yr** | — |
 | DORA rating | Low | **Elite** | — |
-| Year 1 ROI | — | — | **12,507%** |
-| 5-year TCO savings | — | — | **$1,832,532** |
+| Year 1 ROI | — | — | **10,213%** |
+| 5-year TCO savings | — | — | **$1,577,730** |
 
-> _Last estimated: 2026-04-23 · Issue #31 [VRP Data Model / Schema] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issue #134 [DRE Integration Tests] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
