@@ -26,16 +26,24 @@ For each issue, create **4 implementation branches** from the current default br
 Each branch must produce the **same deliverable** as defined in the issue:
 - Follow the tech stack specified in the issue (Rust, Node.js, Python, etc.)
 - Follow naming conventions from Constitution §13
-- Include inline complexity annotations as comments:
+- Include **inline Big O complexity annotations** as comments on every function:
+  ```python
+  # Time complexity: O(n log n) — sorting dominates
+  # Space complexity: O(n) — auxiliary list for merge
+  def sort_proofs(proofs: list) -> list:
   ```
-  // Time complexity: O(n log n)
-  // Space complexity: O(n)
+- Annotate **hot paths** and **critical sections** with performance justification:
+  ```python
+  # HOT PATH: called once per proof verification
+  # Optimization: constant-time HMAC comparison prevents timing attacks
   ```
 - Include a `COMPLEXITY.md` file in the PR summarizing:
-  - Algorithm choices and their Big O analysis
-  - Memory usage patterns
-  - Concurrency model (if applicable)
-  - Trade-offs made and why
+  - Algorithm choices and their Big O analysis (worst, average, best case)
+  - Memory usage patterns (heap vs stack, peak allocation)
+  - Concurrency model (if applicable — locks, async, thread safety)
+  - I/O complexity (DB calls, network requests, file operations per transaction)
+  - Trade-offs made and why (e.g., "chose O(n log n) sort over O(n) radix sort because input is small and comparison-based is simpler to maintain")
+  - Efficiency gains vs naive implementation (e.g., "connection pooling reduces DB overhead from O(n) connections to O(1)")
 
 ## Process
 
@@ -104,7 +112,9 @@ _This is 1 of 4 competing implementations. See #{issue_number} for the Judging A
 
 - All 4 branches must implement the **exact same requirements** from the issue.
 - Each branch works independently — no cross-pollination between model outputs.
-- Always include Big O complexity annotations in the code.
-- Always include `COMPLEXITY.md` in each PR.
+- **Every function must have inline Big O annotations** — no exceptions.
+- Always include `COMPLEXITY.md` in each PR with full efficiency analysis.
+- Document efficiency gains: quantify improvements over naive approaches (e.g., "hash lookup O(1) vs linear scan O(n) saves ~10ms per verification at 10K proofs").
+- Prefer algorithms with better asymptotic complexity even if constant factors are higher — the Judging Agent weights Big O at 25%.
 - Never merge any branch — the Judging Agent and human decide which one wins.
 - Use `gh` CLI for all GitHub operations.
