@@ -359,10 +359,29 @@ but audit evidence of specific compliance gates is required.
 - The VRP enforces structural separation at parse time
 - Any step lacking a valid `InferenceRule` variant is classified as informational and stripped
 
+## Environment Configuration
+
+<!-- Addresses EDGE-001 through EDGE-078 (VRP Configuration edge cases) -->
+
+Per-environment configuration for the VRP system (validator endpoints, signing key references,
+MAAT stake thresholds, quorum requirements, feature flags) is defined in a separate spec:
+
+**See: [`specs/vrp-config-spec.md`](vrp-config-spec.md)**
+
+That spec defines:
+- TOML/YAML configuration schema for dev, staging, and production environments
+- Environment-specific invariants (verification level, quorum threshold, stake minimums)
+- Azure Key Vault URI format and secret management rules
+- Feature flag security constraints
+- Startup validation flow and error codes
+- Config audit trail requirements
+
 ## References
 
 - Whitepaper §3.5 — Verifiable Reasoning Protocol
 - Whitepaper §3.6 — Proof-of-Reasoning Consensus
+- [`specs/vrp-config-spec.md`](vrp-config-spec.md) — VRP Configuration (issue #116)
+- [`specs/vrp-data-model-spec.md`](vrp-data-model-spec.md) — VRP Data Model (issue #31)
 - Proof-carrying code [13]: Necula, 1997
 - Proof-carrying code completions [14]: Kamran et al., 2024
 - zkLLM [16]: Sun et al., 2024
