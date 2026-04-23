@@ -199,6 +199,35 @@ Consistent naming across all project artifacts.
 - **Issues:** `[{topic}] {Deliverable}` (e.g., `[Inventory] Unit Tests`)
 - **PR titles:** `{type}: {short description}` (e.g., `feat: add inventory sync function`)
 
+### §13.1 — Cloud Resource Naming Conventions
+
+<!-- Addresses EDGE-IaC-029, EDGE-IaC-030, EDGE-IaC-031, EDGE-IaC-032, EDGE-IaC-033 -->
+
+All cloud infrastructure resources follow the pattern:
+
+```
+{env}-{component}-{resource-type}[-{descriptor}]
+```
+
+Where:
+- `{env}` is `dev`, `stg`, or `prod` (3-char prefix — **required on all resources**)
+- `{component}` is the module/service name (e.g., `dre`, `avm`, `pod`)
+- `{resource-type}` is the abbreviated resource type (e.g., `kv`, `st`, `aks`)
+- `{descriptor}` is optional, ≤ 8 chars, lowercase alphanumeric, for disambiguation
+
+**Rules:**
+- Environment prefix is **mandatory** on all cloud resources. Resources without an
+  environment prefix are rejected by policy enforcement.
+- Azure Storage Account names must be globally unique, lowercase alphanumeric, no hyphens,
+  3–24 chars. Use `{env}{component}st{5-char-suffix}` (e.g., `proddresta7f3a`).
+- Resource names must use only ASCII lowercase alphanumeric and hyphens (no Unicode,
+  no emoji, no slashes). Branch names used in ephemeral environments must be sanitised
+  before use in resource names (strip non-`[a-z0-9-]`, truncate to 8 chars, append
+  4-char hash).
+- Each environment (`dev`, `stg`, `prod`) must be deployed to a separate cloud
+  subscription/account to prevent cross-environment naming collisions.
+- Full details and per-resource type limits: see `specs/dre-infra-spec.md` §5.
+
 ---
 
 ## §14 — Definition of Done
