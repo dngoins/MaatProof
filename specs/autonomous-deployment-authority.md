@@ -1134,18 +1134,116 @@ Rules:
 
 ---
 
+## DeploymentScore Storage and Retention
+
+<!-- Addresses EDGE-065 -->
+
+`DeploymentScore` records are persisted by the AVM node for audit and forensic
+purposes.
+
+| Property | Value |
+|----------|-------|
+| **Storage location** | AVM node database + IPFS (CID stored on-chain) |
+| **Minimum retention** | 90 days (SOX/SOC2 requirement) |
+| **Recommended retention** | 365 days |
+| **Archival format** | Canonical JSON (sorted keys, Decimal as string) |
+| **Index keys** | `score_id`, `agent_id`, `deploy_environment`, `created_at` |
+| **Max records per day** | 100,000 (after which oldest records are archived to cold storage) |
+
+### Retention Flow
+
+```mermaid
+flowchart TD
+    SCORE["DeploymentScore computed"]
+    DB["Write to AVM database\n(indexed by score_id, agent_id)"]
+    IPFS["Pin to IPFS\n(CID stored on-chain)"]
+    RETAIN["Hot retention: 90 days"]
+    ARCHIVE["Archive to cold storage\n(compressed JSON, S3/Azure Blob/GCS)"]
+    DELETE["Delete from hot storage\nafter 365 days if\ncold archive confirmed"]
+
+    SCORE --> DB
+    SCORE --> IPFS
+    DB --> RETAIN
+    RETAIN -- 90 days elapsed --> ARCHIVE
+    ARCHIVE --> DELETE
+```
+
+---
+
+## Concurrent Score Conflict Resolution
+
+<!-- Addresses EDGE-066 -->
+
+When two ADA scoring agents compute conflicting `DeploymentScore` results for the
+same deployment (same `trace_id`), the following protocol applies:
+
+### Resolution Rules
+
+| Condition | Resolution |
+|-----------|-----------|
+| Both agents agree on authority level | Use the first result received by the orchestrator |
+| Agents disagree on authority level | Use the **lower** (more conservative) authority level |
+| One result is missing signals (`None`) | Use the result with more complete signals; if equal, use lower level |
+| Total score delta > 0.10 | Treat as conflict; log `ADA_SCORE_CONFLICT`; escalate to human operator |
+
+### Conflict Audit Entry
+
+A conflict is logged as `ADA_SCORE_CONFLICT` in the audit trail:
+
+```json
+{
+  "event": "ADA_SCORE_CONFLICT",
+  "trace_id": "<deployment-trace-id>",
+  "score_a": { "total": "0.91", "authority_level": "FULL_AUTONOMOUS" },
+  "score_b": { "total": "0.72", "authority_level": "AUTONOMOUS_WITH_MONITORING" },
+  "resolution": "AUTONOMOUS_WITH_MONITORING",
+  "resolution_reason": "lower_authority_wins",
+  "timestamp": "<ISO-8601>"
+}
+```
+
+Human escalation is triggered when delta > 0.10 — the deployment is blocked
+(`AutonomousDeploymentBlockedError`) until a human operator reviews both scores.
+
+---
+
+## CI Integration and Missing Field Handling
+
+<!-- Addresses EDGE-068, EDGE-069, EDGE-070 -->
+
+When CI pipeline artifacts are unavailable, `RiskAssessment` fields default to
+`None` (where Optional) or conservative defaults:
+
+| Field | CI Failure Behaviour | Effect on Score |
+|-------|---------------------|-----------------|
+| `files_changed` | Default to `0`; log CI_ARTIFACT_MISSING warning | No risk penalty |
+| `lines_changed` | Default to `0`; log warning | No risk penalty |
+| `test_coverage_delta` | Default to `Decimal("0")`; log warning | No coverage penalty |
+| `security_scan_findings` | Default to `0` with severity_breakdown all 0; log `SECURITY_SCAN_MISSING` — treated as HIGH risk in risk_score computation | Risk penalty applied |
+| `critical_paths_touched` | Default to `[]` if unknown; log warning | No path risk penalty |
+
+**Note on EDGE-068 (GitHub API rate limit)**: If the GitHub API is rate-limited
+during `files_changed` computation, the AVM retries with exponential backoff
+(max 3 attempts, 10s/30s/90s). If all retries fail, `files_changed` defaults
+to 500 (medium risk proxy) and the issue is logged.
+
+**Note on EDGE-070 (model/contract mismatch)**: `MaatStake.staked_amount` is
+always re-verified against `MaatToken.stakedBalanceOf(wallet_address)` at
+evaluation time. If the Python cached value differs from on-chain, the
+on-chain value wins. No `risk_multiplier` field exists in the smart contract —
+it is computed fresh by the AVM on each evaluation from the current
+`RiskAssessment`.
+
+---
+
 ## Known Gaps / Future Work
 
 The following scenarios are identified as requiring additional specification work
 (complex changes tracked as GitHub issues):
 
-- **EDGE-019**: Sybil-resistant validator set registration — requires on-chain
-  identity verification beyond minimum stake.
-- **EDGE-020/021**: Validator cartel censorship and proposal delay resistance —
-  requires PoD timeout tuning.
-- **EDGE-031**: Broken slashing contract recovery — requires governance upgrade path.
-- **EDGE-032**: Automatic slash appeal window for `VAL_DOUBLE_VOTE` — potential
-  future governance parameter.
-- **EDGE-065**: Long-term DeploymentScore storage and retention policy — requires
-  data retention spec.
-- **EDGE-068/069**: Resilient CI metric collection — requires CI adapter spec update.
+- **EDGE-001/005**: Emergency HMAC key recovery and multi-sig guardian quorum — tracked in GitHub Issue #64
+- **EDGE-020/021**: Validator cartel censorship and proposal delay resistance — tracked in GitHub Issue #66
+- **EDGE-025**: Reentrancy in Slashing.sol `_executeSlash` — tracked in GitHub Issue #68
+- **EDGE-027**: Governance.sol missing — tracked in GitHub Issue #75
+- **EDGE-030/031/032**: Lost wallet recovery and automatic slash appeal — tracked in GitHub Issue #70
+- **EDGE-066 (delta > 0.10)**: Human operator escalation tooling — tracked in GitHub Issue #74
