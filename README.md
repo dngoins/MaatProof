@@ -304,35 +304,29 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issues #14 · #119 · #136 · #125 · #135: Data Model, Core Pipeline, VRP Documentation, Infrastructure / IaC, ADA Integration Tests — full end-to-end ADA flow validated: signal ingestion → scoring → authority resolution → deploy → auto-rollback (≤60s, signed RollbackProof) → MAAT staking ledger. All integration tests use in-memory test doubles; zero live cloud resources required (AC-6)._
+> _Issue #135: [Autonomous Deployment Authority (ADA)] Integration Tests — end-to-end validation of the full ADA deployment flow: signal ingestion → scoring → authority level resolution → autonomous deployment → post-deploy monitoring → auto-rollback (≤60s, signed `RollbackProof`) → MAAT staking ledger. All integration tests use in-memory test doubles; zero live cloud resources required (AC-6). Runs atop DRE (#141), Core Pipeline (#119), and Data Model (#14)._
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost — Data Model (#14) | $2,326 | $148 | **94%** |
-| Build cost — Core Pipeline (#119) | $6,741 | $247 | **96%** |
-| Build cost — VRP Documentation (#136) | $1,920 | $91 | **95%** |
-| Build cost — Infrastructure / IaC (#125) | $3,605 | $219 | **94%** |
-| Build cost — ADA Integration Tests (#135) | $3,731 | $118 | **97%** |
-| **Combined build cost (#14+#119+#136+#125+#135)** | **$18,323** | **$823** | **96%** |
+| ADA Integration Tests build cost (#135) | $3,731 | $118 | **97%** |
+| DRE feature build cost (9 issues, #106–#141) | $34,188 | $1,959 | **94%** |
+| Combined build cost (#14 + #119 + #141 + #135) | $46,986 | $2,476 | **95%** |
 | Annual developer savings | — | $198,720 | **3,312 hrs/yr** |
-| Annual approval queue savings (ADA) | $6,240 | $0 | **100%** |
-| Annual SOX audit prep savings | $9,600 | $480 | **95%** |
-| ADA rollback failure prevention | $5,400/incident | **$0** (auto + proven) | **100% automated** |
 | Auto-rollback SLA validation in CI | Not validated | **≤60s** verified per PR | **100% coverage** |
 | Rollback proof auditability | 0% (manual) | 100% (signed RollbackProof) | **+100%** |
-| Production deploy approval latency | 2–4 hrs | <5 sec | **99.9% faster** |
+| ADA rollback failure prevention | ~$5,400/incident | **$0** (proven in CI) | **100% coverage** |
+| Integration test CI/CD cost (standard) | — | **$0/mo** | Within GCP free tier |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Integration test CI/CD cost (standard) | — | **$0/mo** | Within GCP free tier |
-| Annual infra cost (100 MAU, GCP runtime + Azure IaC) | — | **$546/yr** | — |
-| Documentation hosting (GitHub Pages) | — | **$0/yr** | Free |
+| AI decision non-determinism | ~20%/re-run | 0% (DRE proof-guaranteed) | **100% elimination** |
+| DRE runtime cost (GCP, 3-model, 100 MAU) | — | **$453/yr** | 3-model DRE incl. |
 | DORA rating | Low | **Elite** | Top 10% globally |
-| Pipeline Year 1 ROI | — | — | **~10,514%** |
-| 5-year TCO savings | — | — | **$1,749,729** |
+| Year 1 ROI | — | — | **11,622%** |
+| 5-year TCO savings | — | — | **$1,787,595** |
 
-> _Last estimated: 2026-04-23 · Run #7 · Issue #135 [ADA Integration Tests] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issue #135 [ADA Integration Tests] · Run #7 · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
