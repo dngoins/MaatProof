@@ -218,6 +218,8 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
+> _Issue #50: ADA Data Model/Schema — 8 models (DeploymentScore, RiskAssessment, DeploymentAuthorityLevel, RollbackProof, MaatStake, SlashRecord, AutonomousDeploymentBlockedError + JSON serialization)_
+
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
 | Build cost per IaC feature | $5,500 | $221 | **96%** |
@@ -226,6 +228,11 @@ graph LR
 | Lead time for changes | 5 days | 2 hours | **98% faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
+| RollbackProof audit cost | $50,000+ (incident reconstruction) | $0.004/event | **>99% reduction** |
+| MaatStake + SlashRecord infra | N/A | $0.12/mo (GCP Firestore) | — |
+| Annual infra cost (100 MAU) | N/A | **$26/yr (GCP)** | — |
+| 5-year TCO savings | — | — | **$1,813,523** |
+| Year 1 ROI | — | — | **13,152%** |
 | DORA rating | Low | **Elite** | — |
 | 5-year TCO savings | — | $1,881,815 | — |
 

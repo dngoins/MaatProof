@@ -21,9 +21,9 @@
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--light);
+      color: #333;
       line-height: 1.6;
       padding: 2rem;
       max-width: 1400px;
@@ -42,15 +42,42 @@
     /* KPI Cards */
     .kpi-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
       gap: 1rem;
-      margin-bottom: 2rem;
+      margin-bottom: 2.5rem;
     }
     .kpi-card {
-      background: var(--surface);
+      background: var(--card-bg);
+      border-radius: 10px;
+      padding: 1.2rem;
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 1.25rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+      text-align: center;
+    }
+    .kpi-card .value {
+      font-size: 1.7rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin: 0.3rem 0;
+    }
+    .kpi-card .label {
+      font-size: 0.8rem;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .kpi-card .sub { font-size: 0.75rem; color: #999; margin-top: 0.2rem; }
+    .kpi-card.green .value { color: var(--green); }
+    .kpi-card.blue .value { color: var(--blue); }
+    .kpi-card.gold .value { color: var(--gold); }
+    .section { margin-bottom: 3rem; }
+    .section h2 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 1.2rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid var(--accent);
     }
     .kpi-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
     .kpi-card .value { font-size: 1.75rem; font-weight: 700; color: var(--accent); margin: 0.25rem 0; }
@@ -87,7 +114,9 @@
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 1.5rem;
-      margin-bottom: 2rem;
+    }
+    @media (max-width: 768px) {
+      .chart-grid { grid-template-columns: 1fr; }
     }
     .chart-grid.wide { grid-template-columns: 1fr; }
     @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
@@ -147,7 +176,6 @@
   </div>
 
   <!-- KPI Cards -->
-  <h2>Key Metrics</h2>
   <div class="kpi-grid">
     <div class="kpi-card green">
       <div class="label">Build Savings (Issue #117)</div>
