@@ -4,26 +4,33 @@ MaatProof is a Layer 1 blockchain for **Agentic CI/CD (ACI/ACD)**. It replaces t
 
 Every deployment decision produces a `ReasoningProof` — a hash-chained, HMAC-signed artifact that answers *"Why did this deploy at 2 am?"* with a cryptographically verifiable answer, not a stale log entry.
 
+The protocol stack is built in **Rust** (consensus engine, AVM, DRE, VRP, ADA), **Node.js** (orchestrator, GitHub integrations, SDK), and **Solidity** (deployment contracts, tokenomics, governance).
+
 ## What MaatProof Does
 
 | Capability | How it works |
 |---|---|
-| **Proof-of-Deploy consensus** | Validators replay and attest agent reasoning traces before production deploys |
-| **Agent Virtual Machine (AVM)** | Executes reasoning traces deterministically and validates against on-chain policy |
+| **Proof-of-Deploy consensus** | Two-layer consensus: DRE model committee (L1) + stake-weighted validator committee (L2) attest every deployment |
+| **Deterministic Reasoning Engine (DRE)** | N-of-M LLM instances execute a canonical `PromptBundle` in parallel; convergence on a `DecisionTuple` emits a `CommitteeCertificate` — determinism is a system property, not a per-call guarantee |
+| **Verifiable Reasoning Protocol (VRP)** | Typed reasoning records committed as a Merkleized DAG; only *admissible* (machine-checkable) reasoning may authorize a production deploy |
+| **Autonomous Deployment Authority (ADA)** | 7-condition authorization replaces mandatory human approval as the protocol default; human approval is a configurable policy gate for regulated workloads |
+| **Agent Virtual Machine (AVM)** | Executes reasoning traces deterministically in a WASM sandbox and validates against on-chain policy |
 | **Cryptographic audit trail** | Every agent decision is hash-chained and HMAC-SHA256 signed — tamper-evident by design |
-| **Human approval invariant** | Production deployments always require a human in the loop — accountability, not capability |
-| **Self-healing pipelines** | Agents don't just report failures — they fix tests, retry, and redeploy with bounded retries |
+| **Self-healing pipelines** | Agents fix failing tests, retry, and redeploy with bounded retries; runtime guard + rollback proofs provide automatic production safety |
 
 ## Key Components
 
 | Component | Role |
 |---|---|
-| **AVM** | Executes and verifies agent reasoning |
-| **Deployment Contracts** | Policy as code, on-chain |
-| **PoD Consensus** | Validators attest deployments |
-| **$MAAT** | Staking, slashing, incentives |
-| **ReasoningProof** | Signed, hash-chained reasoning artifacts |
-| **OrchestratingAgent** | Event-driven coordination of deterministic + agent layers |
+| **AVM** | WASM sandbox execution and policy-driven trace verification (Rust) |
+| **DRE** | N-of-M LLM committee; canonical PromptBundle + EvidenceBundle → DecisionTuple (Rust) |
+| **VRP** | Typed, Merkleized reasoning records; admissible vs informational split (Rust) |
+| **ADA** | 7-condition autonomous deployment authorization; runtime guard + rollback proofs (Rust) |
+| **Deployment Contracts** | Policy as code, on-chain; configurable human approval gate (Solidity) |
+| **PoD Consensus** | Two-layer: DRE model committee + validator stake-weighted quorum (Rust / gRPC) |
+| **$MAAT** | Staking, slashing, validator incentives, DAO governance (Solidity) |
+| **ReasoningProof** | Signed, hash-chained reasoning artifacts (Python orchestration layer) |
+| **OrchestratingAgent** | Event-driven coordination of deterministic + agent layers (Node.js) |
 
 ## Status
 
@@ -36,6 +43,52 @@ Every deployment decision produces a `ReasoningProof` — a hash-chained, HMAC-s
 ## Architecture: The Hybrid ACI/ACD Model
 
 The honest answer is that **hybrid is right** — for now. Agents orchestrate above a deterministic trust anchor. The agent decides; the pipeline executes with cryptographic receipts.
+
+### Full Protocol Stack
+
+```mermaid
+flowchart LR
+    Agent["🤖 Agent\n(Node.js)"]
+    Contract["📜 Deployment\nContract\n(Solidity)"]
+    AVM["⚙️ AVM\n(Rust/WASM)"]
+    DRE["🧠 DRE\n(Rust)"]
+    VRP["🔍 VRP\n(Rust)"]
+    ADA["🔐 ADA\n(Rust)"]
+    PoD["🗳 PoD Consensus\n(Rust/gRPC)"]
+    Chain["⛓ Chain\n(Rust)"]
+    Prod["🚀 Production"]
+
+    Agent --> Contract --> AVM --> DRE --> VRP --> ADA --> PoD --> Chain --> Prod
+```
+
+### Two-Layer Consensus
+
+```mermaid
+flowchart TD
+    A["Agent submits PromptBundle + EvidenceBundle"] --> B
+
+    subgraph L1["Layer 1 — DRE Model Committee"]
+        B["N-of-M LLM instances (parallel)"]
+        B --> C["Normalize → DecisionTuple"]
+        C --> D{"≥ M quorum?"}
+        D -->|yes| E["CommitteeCertificate"]
+        D -->|no| F["Discard — agent retries"]
+    end
+
+    E --> G
+
+    subgraph L2["Layer 2 — Validator Committee"]
+        G["Validators receive ValidatorInputPackage"]
+        G --> H["Replay via pinned WASM checkers"]
+        H --> I["Verify VRP Merkle root + ADA conditions"]
+        I --> J{"2/3 supermajority?"}
+        J -->|yes| K["FINALIZED"]
+        J -->|dispute| L["Dispute path → governance"]
+        J -->|reject| M["REJECTED"]
+    end
+```
+
+### Orchestrating Agent + Deterministic Layers
 
 ```mermaid
 flowchart LR
@@ -80,10 +133,13 @@ flowchart LR
 agent.on("code_pushed")      -> run_deterministic_gates()
 agent.on("test_failed")      -> fix_and_retry(max=3)
 agent.on("all_tests_pass")   -> deploy_to_staging()
-agent.on("staging_healthy")  -> request_human_approval()   # constitutional invariant
-agent.on("approved")         -> deploy_to_prod()
-agent.on("prod_error_spike") -> rollback()
+agent.on("staging_healthy")  -> submit_prompt_bundle()   # → DRE → VRP → ADA
+agent.on("ada_authorized")   -> deploy_to_prod()         # ADA is protocol default
+agent.on("policy_requires")  -> request_human_approval() # when contract declares it
+agent.on("prod_error_spike") -> rollback()               # runtime guard triggers
 ```
+
+> ADA is the protocol default for production authorization. Human approval is a configurable gate declared in the Deployment Contract — required for regulated workloads (SOX, HIPAA, PCI-DSS, CRITICAL tier).
 
 ---
 
@@ -143,13 +199,13 @@ graph LR
 
 | Risk | Mitigation |
 |---|---|
-| **Non-determinism** | Cryptographic reasoning proofs make every decision auditable and reproducible |
-| **Auditability gap** | ReasoningProof = signed artifact, not a stale log entry |
-| **Blast radius** | Deterministic gates (lint, compile, security scan) cannot be bypassed by any agent |
-| **Runaway loops** | Bounded retries (max 3) with automatic escalation to human |
+| **Non-determinism** | DRE: N-of-M committee quorum makes determinism a system property; VRP Merkle DAG makes every reasoning step auditable |
+| **Auditability gap** | ReasoningProof = signed artifact; VRP admissible reasoning is on-chain and verifiable |
+| **Blast radius** | Deterministic gates cannot be bypassed; ADA requires 7 conditions including zero blocking CVEs |
+| **Runaway loops** | Bounded retries (max 3); runtime guard auto-rolls back on error spike |
 | **Rate limits** | Orchestrator monitors and re-triggers with max 15 retries per item |
-| **Security surface** | Agent authority limits defined in Constitution §5 — agents cannot override deterministic gates |
-| **LLM error rate** | 4-branch competing implementations + Judging Agent selects the best |
+| **Security surface** | Agent authority limits in Constitution §5; dispute path prevents bad slashing |
+| **LLM error rate** | 4-branch competing implementations + Judging Agent; DRE committee quorum as L1 safety |
 
 ---
 
@@ -204,9 +260,18 @@ print(f'Verified: {ProofVerifier(b\"my-secret\").verify(proof)}')
 ```
 CONSTITUTION.md          # Pipeline invariants — the policy layer above code
 CLAUDE.md                # Agent session instructions
+specs/
+  dre-spec.md            # Deterministic Reasoning Engine (Rust)
+  vrp-spec.md            # Verifiable Reasoning Protocol (Rust)
+  ada-spec.md            # Autonomous Deployment Authority (Rust)
+  pod-consensus-spec.md  # Two-layer PoD consensus — DRE + validator committees
+  avm-spec.md            # Agent Virtual Machine
+  agent-identity-spec.md # Agent DID and key management
 docs/
+  01-architecture.md     # Full 9-component stack + tech stack callouts
+  02-consensus-proof-of-deploy.md  # Block structure, MaatBlock Rust struct
+  08-roadmap.md          # Phase roadmap (full ACD from day 1)
   requirements/          # Feature specs and backlog
-  architecture/          # Design docs, ADRs, Mermaid diagrams
   reports/               # Cost estimation and analysis reports
 maatproof/
   proof.py               # ReasoningProof, ProofBuilder, ProofVerifier
@@ -238,24 +303,6 @@ See [CLAUDE.md](CLAUDE.md) for agent session instructions and the full label tax
 ## License
 
 [CC0-1.0](LICENSE)
-
----
-
-## 💰 Cost Savings (ACI/ACD vs Traditional)
-
-| Metric | Traditional | MaatProof ACI/ACD | Savings |
-|--------|-------------|-------------------|---------|
-| Build cost per issue | $2,326 | $148 | **94%** |
-| Annual CI/CD cost (4-dev team) | $304,392 | $2,429 | **99%** |
-| Developer hours/year on CI/CD | 3,104 hrs | ~100 hrs | **3,004 hrs** |
-| Mean deploy time | 5 days | 2 hours | **97%** |
-| Defect escape rate | 15% | 3% | **80% ↓** |
-| MTTR | 4 hours | 15 minutes | **94% ↓** |
-| 5-year TCO | $1,521,960 | $14,124 | **$1,507,836** |
-| ROI (Year 1) | — | — | **12,433%** |
-
-> _Last estimated: 2026-04-23 · Issue #14 [ACI/ACD Engine] Data Model/Schema_
-> [Full report](docs/reports/cost-estimation-report.md) · [Interactive charts](docs/reports/cost-summary.html)
 
 ---
 
