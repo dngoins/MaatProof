@@ -289,6 +289,45 @@ impl DRE {
 | Minority disagrees on policy gate | Flag for post-deploy audit |
 | Minority disagrees on risk score only | Accept if risk scores within 10% range |
 
+### LLM Provider Failure During Committee Execution
+
+<!-- Addresses EDGE-ADA-061 -->
+
+An LLM provider may go down or time out mid-committee execution. The DRE handles
+partial committee failures as follows:
+
+| Scenario | Action |
+|---|---|
+| 1 of N members times out (≤ 60s) | Continue; treat timed-out member as non-voting |
+| Timed-out member(s) reduce committee below quorum threshold | Re-execute remaining online members; extend timeout window by 30s |
+| All N members time out | Proposal transitions to `DRE_EXECUTING → DISCARDED`; agent may resubmit |
+| LLM API returns error (non-200) | Retry member once with exponential backoff (2s, 4s, 8s); then treat as timeout |
+| Provider-level outage (all members use same provider) | `PROVIDER_UNAVAILABLE` error; proposal discarded; agent resubmits to alternate endpoint |
+
+**Multi-provider resilience**: The DRE SHOULD distribute committee members across at
+least 2 distinct LLM providers when possible (e.g., 2-of-3 from Anthropic, 1-of-3
+from OpenAI). This prevents a single provider outage from blocking all DRE rounds.
+
+```rust
+pub struct CommitteeConfig {
+    pub members: Vec<LlmProviderConfig>,
+    pub quorum_threshold: usize,
+    pub execution_timeout_secs: u64,   // per member (default: 60)
+    pub retry_on_error: bool,          // default: true (1 retry with backoff)
+}
+
+pub struct LlmProviderConfig {
+    pub provider: String,    // "anthropic" | "openai" | "mistral"
+    pub model_id: String,
+    pub endpoint: String,
+    pub fallback_endpoint: Option<String>,  // alternate endpoint if primary fails
+}
+```
+
+A committee member that fails after all retries does NOT produce a signature;
+it is excluded from the quorum count. The DRE logs a `COMMITTEE_MEMBER_FAILED`
+event for monitoring. No stake is slashed for provider unavailability.
+
 ## Stage 5: Certification
 
 On successful convergence, the DRE emits a **Committee Certificate** that validators can use

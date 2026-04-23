@@ -2825,10 +2825,10 @@ The following scenarios are identified as requiring additional specification wor
 - **EDGE-186 (round leader delay)**: Round leader timeout and rotation — tracked in GitHub Issue #66
 - **EDGE-189 (reentrancy)**: Reentrancy guard on Slashing.sol `_executeSlash` — tracked in GitHub Issue #68
 - **EDGE-191 (governance calldata)**: Governance.sol calldata whitelist — tracked in GitHub Issue #75
-- **EDGE-221 (concurrent rollback idempotency)**: Two monitoring jobs triggering rollback simultaneously for the same deployment_id — tracked as new GitHub Issue (filed by Spec Edge Case Tester)
-- **EDGE-240 (last_known_good artifact validation)**: Spec does not define validation rules for the last_known_good artifact reference before rollback — tracked as new GitHub Issue
-- **EDGE-254 (IPFS CID vs artifact CID mismatch)**: Resolution protocol when workflow artifact CID differs from on-chain CID — tracked as new GitHub Issue
-- **EDGE-257 (workflow timing attack)**: Mitigations for timing-based inference of ADA score thresholds via workflow run duration — tracked as new GitHub Issue
-- **EDGE-272 (gas price management for staking transactions)**: Behaviour when staking transaction stays pending indefinitely due to underpriced gas — tracked as new GitHub Issue
-- **EDGE-275 (TOCTOU DAO vote rescission)**: Authority level computed as FULL_AUTONOMOUS but DAO vote rescinded before deployment step executes — tracked as new GitHub Issue
+- **EDGE-221 (concurrent rollback idempotency)**: Two monitoring jobs triggering rollback simultaneously for the same deployment_id — tracked in GitHub Issue #305
+- **EDGE-240 (last_known_good artifact validation)**: Spec does not define validation rules for the last_known_good artifact reference before rollback — tracked in GitHub Issue #308
+- **EDGE-254 (IPFS CID vs artifact CID mismatch)**: Resolution protocol when workflow artifact CID differs from on-chain CID — tracked in GitHub Issue #303
+- **EDGE-257 (workflow timing attack)**: Mitigations for timing-based inference of ADA score thresholds via workflow run duration — tracked in GitHub Issue #316
+- **EDGE-272 (gas price management for staking transactions)**: Behaviour when staking transaction stays pending indefinitely due to underpriced gas — tracked in GitHub Issue #314
+- **EDGE-275 (TOCTOU DAO vote rescission)**: Authority level computed as FULL_AUTONOMOUS but DAO vote rescinded before deployment step executes — tracked in GitHub Issue #311
 - **EDGE-194 (lost wallet)**: Agent wallet recovery path — tracked in GitHub Issue #70

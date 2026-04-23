@@ -1,6 +1,7 @@
 # Deterministic Reasoning Engine (DRE) — Data Models Specification
 
 <!-- Addresses EDGE-001 through EDGE-040 (issue #30) -->
+<!-- Addresses EDGE-INT-002, EDGE-INT-006, EDGE-INT-023, EDGE-INT-025 (issue #134) -->
 
 ## Overview
 
@@ -212,7 +213,7 @@ class CanonicalPrompt:
 |------|------|
 | Unicode form | NFC via `unicodedata.normalize("NFC", s)` — eliminates EDGE-006 |
 | Control characters | Strip codepoints `< 0x20` except `\t` (0x09), `\n` (0x0A), `\r` (0x0D) — eliminates EDGE-030 |
-| Encoding | UTF-8 strictly |
+| Encoding | UTF-8 strictly (`errors="strict"`); lone Unicode surrogates (U+D800–U+DFFF) cause `UnicodeEncodeError` and the prompt is rejected — eliminates EDGE-D048 |
 | Prompt content | Treated as opaque string — JSON prompts are **not** re-parsed — eliminates EDGE-022 |
 | Max size | 32,768 bytes post-normalisation; raises `ValueError` if exceeded — eliminates EDGE-008 |
 | Empty input | Valid — SHA-256(b"") = `e3b0c442...` — eliminates EDGE-007, EDGE-035 |
@@ -293,6 +294,73 @@ The `normalized_output` field represents only *formatting* normalisation:
 
 Implementations **must** verify that `raw_output` and `normalized_output` are
 semantically equivalent before constructing a `ModelResponse`.
+
+#### AST Comparison for Code Responses
+
+<!-- Addresses EDGE-INT-006, EDGE-INT-023 (issue #134), EDGE-D007 (issue #137) -->
+
+When a model response contains code (Python, JSON, YAML, or other structured
+text), the equivalence check between `raw_output` and `normalized_output` is
+performed using **AST-level comparison**, not string equality. Two code snippets
+are considered semantically equivalent for normalization purposes if and only if
+their parsed abstract syntax trees are identical under Python's `ast.dump()`.
+
+**Rules for Python code normalization:**
+
+| Transform | Allowed | Rationale |
+|-----------|---------|-----------|
+| Strip trailing whitespace on each line | ✅ | Pure formatting |
+| Normalise `\r\n` → `\n` | ✅ | Platform-independent |
+| Remove blank lines between top-level statements (max 2 blank lines preserved) | ✅ | PEP 8 formatting |
+| Change indentation character (`\t` ↔ spaces) | ❌ | Python-semantic; `IndentationError` risk |
+| Re-order function parameters | ❌ | Semantic change |
+| Rename variables or identifiers | ❌ | Semantic change |
+| Add/remove `pass` statements, imports | ❌ | Semantic change |
+
+**Implementation contract:**
+
+```python
+import ast
+
+def assert_code_semantically_equivalent(raw: str, normalised: str) -> None:
+    """Raise ValueError if normalised code is not semantically equivalent to raw.
+
+    Uses ast.dump() for Python code. For non-Python text, falls back to
+    string equality after whitespace normalization.
+
+    Raises:
+        ValueError: If AST parse fails or ASTs differ.
+    """
+    try:
+        raw_ast = ast.dump(ast.parse(raw))
+        norm_ast = ast.dump(ast.parse(normalised))
+    except SyntaxError:
+        # Not valid Python — fall back to whitespace-normalised string comparison
+        raw_ws = " ".join(raw.split())
+        norm_ws = " ".join(normalised.split())
+        if raw_ws != norm_ws:
+            raise ValueError(
+                "normalized_output is not semantically equivalent to raw_output "
+                "(non-Python text: whitespace-normalised strings differ)"
+            )
+        return
+    if raw_ast != norm_ast:
+        raise ValueError(
+            "normalized_output is not semantically equivalent to raw_output "
+            "(Python ASTs differ)"
+        )
+```
+
+**Scope note**: The `response_hash` is always computed from `normalized_output`
+(post-formatting normalization), never from the AST dump. The AST check is a
+**construction-time guard** to prevent accidentally recording a semantically
+different normalised output, not a new hashing input.
+
+**Non-code responses**: For plain-text responses (no code blocks), semantic
+equivalence is verified by whitespace-normalised string comparison (join on
+single space). The full AST pipeline is only invoked when the response contains
+a fenced code block (` ```python `) or when the normaliser detects a
+`SyntaxError` on the raw output.
 
 ---
 
@@ -704,6 +772,40 @@ keys `prompt_hash`, `consensus_ratio`, `response_hash`, or `model_ids`. Consumer
 code must always read these values from the dedicated fields, never from
 `metadata`. This invariant is enforced at construction time.
 
+### 6.6 All-Committee-Timeout Behavior
+
+<!-- Addresses EDGE-INT-002 (issue #134) -->
+
+When **all N committee members** time out or fail to respond, the DRE pipeline
+MUST produce a `ConsensusResult` with `agreements = 0` and `total = N` (the
+number of models **queried**, per the denominator policy in §3.5). This yields
+`consensus_ratio = 0.0` → `ConsensusClassification.NONE`.
+
+The resulting `DeterministicProof` is constructed with:
+- `consensus_ratio = 0.0`
+- `classification = NONE`
+- `response_hash = SHA-256(b"") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
+- `model_ids` = the list of models that were **queried** (not only those that
+  responded), so that the proof is auditable.
+
+The proof is **valid** (passes `ProofVerifier.verify()`) but the `NONE`
+classification prevents deployment authorization under the ADA 7-condition gate
+(condition 2: DRE quorum satisfied). The proof is persisted to the audit trail
+as evidence of the timeout event.
+
+**Error vs. valid-proof distinction**: The DRE executor MUST NOT raise an
+unhandled exception when all models time out. A `DeterministicProof` with
+`ConsensusClassification.NONE` is the correct response. Callers that require
+a minimum consensus level (e.g., `MAJORITY`) are responsible for checking the
+`classification` field and escalating to human review accordingly.
+
+```
+All N timeouts → ConsensusResult.build(agreements=0, total=N)
+               → ratio=0.0 → classification=NONE
+               → DeterministicProof(response_hash=SHA-256(b""), ...)
+               → proof persisted; deployment BLOCKED (ADA condition 2 fails)
+```
+
 ---
 
 ## 7. Edge Case Handling Reference
@@ -752,6 +854,8 @@ code must always read these values from the dedicated fields, never from
 | EDGE-038 | Out-of-range seed | `DeterminismParams` validates seed in `[0, 2^32-1]` |
 | EDGE-039 | Thread-safe normalisation | `unicodedata.normalize` is reentrant in CPython/PyPy |
 | EDGE-040 | Multi-model `response_hash` | SHA-256 of majority `normalized_output`; SHA-256(b"") if NONE |
+| EDGE-D007 | AST comparison for code | Text-level normalisation only in v1.0; AST-level deferred to v2.0 (§3.3, issue #288) |
+| EDGE-D048 | Unicode surrogate characters in prompt | `encode("utf-8", errors="strict")` raises `UnicodeEncodeError`; prompt rejected (§3.2) |
 
 ---
 
@@ -795,8 +899,6 @@ flowchart TD
     MAJORITY --> PROOF
     CANON --> PROOF
 ```
-
----
 
 ---
 

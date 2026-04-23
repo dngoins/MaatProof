@@ -40,6 +40,92 @@ The protocol stack is built in **Rust** (consensus engine, AVM, DRE, VRP, ADA), 
 
 ---
 
+## Autonomous Deployment Authority (ADA)
+
+<!-- Addresses EDGE-001, EDGE-004, EDGE-051, EDGE-053 -->
+
+ADA is the MaatProof subsystem that **replaces mandatory human approval** as the protocol
+default for production deployments. It computes a multi-signal deployment score, derives an
+authority level, and either executes an autonomous deployment or raises
+`AutonomousDeploymentBlockedError` — with a full cryptographic proof chain for every decision.
+
+> **Before ADA:** Every production deployment required `HumanApprovalRequiredError` to be
+> resolved by a human approver — even for low-risk, high-confidence changes.  
+> **After ADA:** Human approval is a configurable policy gate for regulated workloads
+> (HIPAA, SOX, PCI-DSS). ADA handles authorization by proof, not by rubber stamp.
+
+### How ADA Works
+
+```
+Agent proposes → AVM gates run → DRE committee → VRP reasoning → ADA scores (0.0–1.0)
+    → Authority level derived → Deploy (or block) → Runtime Guard (15-min window)
+    → Auto-rollback if thresholds breached → Signed RollbackProof on-chain
+```
+
+### Multi-Signal Scoring Model
+
+ADA aggregates five independently verified signals (no self-reporting allowed):
+
+| Signal | Weight | What It Measures |
+|--------|--------|-----------------|
+| `deterministic_gates` | **25%** | All AVM gates pass: lint, compile, security scan, artifact signing |
+| `dre_consensus` | **20%** | DRE N-of-M committee converges on `Approve` |
+| `logic_verification` | **20%** | Formal logic verifier signs off on reasoning |
+| `validator_attestation` | **20%** | Stake-weighted PoD validator quorum attests |
+| `risk_score` | **15%** | `1.0 − normalised_risk` (CVEs, change size, critical paths, test coverage) |
+
+**Total score = weighted sum, range [0.0, 1.0], computed with Python `Decimal` for determinism.**
+
+### Authority Levels
+
+| Level | Score Threshold | Production? | Notes |
+|-------|----------------|-------------|-------|
+| `FULL_AUTONOMOUS` | ≥ 0.90 | ✅ | Requires DAO vote; blocked for HIPAA/SOX |
+| `AUTONOMOUS_WITH_MONITORING` | 0.75–0.89 | ✅ | Auto-rollback guard active |
+| `STAGING_AUTONOMOUS` | 0.60–0.74 | ❌ staging only | |
+| `DEV_AUTONOMOUS` | 0.40–0.59 | ❌ dev only | |
+| `BLOCKED` | < 0.40 | ❌ | `AutonomousDeploymentBlockedError` raised |
+
+### Auto-Rollback Protocol
+
+Every production deployment runs a **15-minute monitoring window** with 10-second metric polls.
+Rollback is triggered automatically when:
+- Error rate > 5% (over any 60-second window)
+- p99 latency > 2× pre-deployment baseline
+- CPU > 95% sustained for > 120 seconds
+- Health check fails 3 consecutive times
+- Metrics become unavailable for ≥ 30 seconds (fail-safe)
+
+Every rollback produces a signed `RollbackProof` (HMAC-SHA256, KMS-sourced key) recorded
+on-chain as a first-class chain-of-custody event.
+
+### MAAT Staking for Deployment
+
+| Environment | Minimum Agent Stake |
+|-------------|---------------------|
+| Development | 100 $MAAT |
+| Staging / UAT | 1,000 $MAAT |
+| Production | 10,000 $MAAT |
+
+Effective minimum = base × `risk_multiplier` (derived from critical paths touched + CVE severity).
+Stake is locked for the deployment round + 30-day challenge window.
+
+### Migrating from `HumanApprovalRequiredError`
+
+```python
+# ✅ Updated catch block for ADA
+try:
+    pipeline.deploy()
+except (HumanApprovalRequiredError, AutonomousDeploymentBlockedError) as e:
+    # AutonomousDeploymentBlockedError carries: reason, authority_level, deployment_score, trace_id
+    handle_blocked_deployment(e)
+```
+
+📐 **[Full ADA architecture decision record →](docs/architecture/ADR-001-autonomous-deployment-authority.md)**  
+📋 **[Complete ADA technical spec →](specs/autonomous-deployment-authority.md)**
+
+---
+
 ## Architecture
 
 MaatProof operates as a fully autonomous ACI/ACD system. Agents propose, DRE verifies, VRP records reasoning, ADA authorizes, and the chain finalizes — no external CI/CD pipeline required.

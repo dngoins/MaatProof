@@ -1092,6 +1092,57 @@ on-chain registered version.
 
 ---
 
+## ADA Version Compatibility
+
+<!-- Addresses EDGE-ADA-062 -->
+
+The `ada_version` field in `AdaAuthorization` records which version of the ADA protocol
+produced the authorization. Validators MUST verify that the `ada_version` is compatible
+with the current on-chain registered version.
+
+### Version Negotiation
+
+```rust
+pub const ADA_CURRENT_VERSION: &str = "1.0";
+
+pub fn validate_ada_version(authorization: &AdaAuthorization) -> Result<(), AdaVersionError> {
+    let (major, minor) = parse_semver(&authorization.ada_version)?;
+    let (cur_major, cur_minor) = parse_semver(ADA_CURRENT_VERSION)?;
+
+    // Different major version = incompatible (breaking change)
+    if major != cur_major {
+        return Err(AdaVersionError::IncompatibleMajorVersion {
+            found: authorization.ada_version.clone(),
+            current: ADA_CURRENT_VERSION.to_string(),
+        });
+    }
+    // Minor version: newer authorization is forward-compatible
+    // (newer client talking to older validator is allowed, vice versa)
+    // Major version mismatch only is blocking
+    Ok(())
+}
+```
+
+### Version Upgrade Protocol
+
+When the ADA protocol upgrades its major version:
+
+1. The new version is registered on-chain via governance vote
+2. A **90-day dual-acceptance window** begins: validators accept BOTH old and new
+   `ada_version` values
+3. After 90 days, the old major version is deprecated; new authorizations MUST use
+   the current version; old-version authorizations are rejected
+4. Historic finalized blocks remain valid (they are immutable records)
+
+**Version field validation** in `AdaAuthorization`:
+- `ada_version` MUST be a valid semver string (e.g., "1.0", "2.1")
+- Empty or unparseable `ada_version` MUST cause the validator to reject the
+  authorization with `INVALID_ADA_VERSION`
+- If `ada_version` matches a deprecated (post-window) version, validators reject
+  with `ADA_VERSION_DEPRECATED`
+
+---
+
 ## Naming Clarification: "5 Signals" vs "7 Conditions"
 
 <!-- Addresses EDGE-ADA-001 -->

@@ -79,6 +79,27 @@ hash, making the chain tamper-evident.
 Unicode characters (including emoji) are encoded as UTF-8 before hashing.
 No NFC normalization is applied at this layer (the AVM DRE layer normalizes).
 
+### Step Ordering and step_id Semantics
+
+<!-- Addresses EDGE-D022 -->
+
+`ProofBuilder.build()` processes steps **in the order they appear in the `steps`
+list** (positional order), not by `step_id` value. The hash chain is built
+positionally: `steps[0]` feeds `previous_hash=""`, `steps[1]` feeds
+`previous_hash=steps[0].step_hash`, and so on.
+
+- `step_id` values are **identifiers, not sequence numbers**. They need not be
+  contiguous, monotonically increasing, or zero-based.
+- Two steps MUST NOT share the same `step_id` within a single proof; this is
+  checked by `ProofBuilder.build()` (raises `ValueError`).
+- Non-sequential or non-monotonic `step_id` values (e.g., `[5, 2, 99]`) are
+  accepted. The chain is still valid; `ProofVerifier.verify()` replays in the
+  list order, not sorted by `step_id`.
+- Callers that need deterministic ordering by `step_id` MUST sort before
+  passing to `build()`. `ReasoningChain.step()` always assigns `step_id =
+  len(self._steps)` at append time, so chains built through
+  `ReasoningChain` are always naturally ordered.
+
 ---
 
 ## §2 — ReasoningProof
@@ -254,13 +275,22 @@ is a configuration error"`.
 
 Required minimum gate set for ACI/ACD pipelines (CONSTITUTION §2):
 
-| Gate | Required For |
-|---|---|
-| `lint` | All environments |
-| `compile` | All environments |
-| `security_scan` | All environments |
-| `artifact_sign` | Staging + Production |
-| `compliance` | Production |
+<!-- Addresses EDGE-D095: reconciles CONSTITUTION.md §2 (6 gates) with proof-chain-spec.md -->
+
+| Gate | Required For | Exit Criteria | Bypass Prevention |
+|---|---|---|---|
+| `lint` | All environments | Zero lint errors; style violations cause FAILED status | Coded as objective rule evaluation — no agent context overrides |
+| `compile` | All environments | Zero compile errors; warnings permitted | Binary pass/fail; no interpretation possible |
+| `security_scan` | All environments | Zero critical CVEs; configurable threshold for high | CVE database is ground truth; agents cannot declare CVEs acceptable (CONSTITUTION §2) |
+| `artifact_sign` | Staging + Production | Valid Sigstore/Cosign signature over artifact hash | Signature requires private key in KMS; agents hold no signing key |
+| `compliance` | Production | SOC2/HIPAA/SOX gate checklist passes | Compliance rules are hard-coded; no policy override path |
+| `reproducible_build` | Staging + Production | Same source → same artifact hash across two independent builds | Build env is hermetic; non-determinism in build raises FAILED |
+
+> **Reconciliation note**: `CONSTITUTION.md §2` lists six required gates including
+> `reproducible_build`. This spec previously listed five. `reproducible_build` is now
+> added here to bring the two documents in sync. Pipelines that do not yet have a
+> hermetic build environment SHOULD register a `reproducible_build` stub gate that
+> logs a WARNING but does not FAIL until the hermetic build is implemented.
 
 ### Gate Name Uniqueness
 
@@ -401,6 +431,56 @@ external input to an `AgentGate.run()`:
 | `HUMAN_APPROVED` | `_handle_human_approved` — records approval; unblocks production |
 | `HUMAN_REJECTED` | `_handle_human_rejected` — records rejection; blocks pipeline |
 | `ROLLBACK_COMPLETE` | `_handle_rollback_complete` — records rollback proof |
+
+### Complete Pipeline Event Catalogue
+
+<!-- Addresses EDGE-D094: documents ALL event types including system-internal events -->
+
+The following table lists every event type that may appear in the audit log.
+Events in the `PipelineEvent` enum are user-visible lifecycle events.
+System events are emitted internally by the orchestrator and are NOT in the
+`PipelineEvent` enum but MUST be recorded in the audit log.
+
+#### Lifecycle Events (PipelineEvent enum)
+
+| Event | Source | Description | Expected Orchestrator Response |
+|---|---|---|---|
+| `CODE_PUSHED` | External trigger | New code revision pushed | Run deterministic layer immediately |
+| `TEST_FAILED` | Deterministic layer | One or more tests failed | Invoke test_fixer agent; retry up to `max_fix_retries` |
+| `TEST_PASSED` | Deterministic layer | All tests pass | Record; no further action required |
+| `ALL_TESTS_PASS` | Deterministic layer | Full test suite passes | Trigger staging deployment |
+| `STAGING_HEALTHY` | External / runtime guard | Staging deployment shows healthy metrics | Request human approval (if policy requires) or proceed to production |
+| `STAGING_UNHEALTHY` | External / runtime guard | Staging metrics degrade | Rollback staging; re-run gates |
+| `HUMAN_APPROVED` | Human approver | A registered approver has signed off | Unblock production deployment; record `proof_id` reference |
+| `HUMAN_REJECTED` | Human approver | A registered approver has rejected | Block pipeline; escalate to on-call |
+| `PROD_ERROR_SPIKE` | Runtime guard | Production error rate exceeded threshold | Invoke rollback agent immediately |
+| `ROLLBACK_COMPLETE` | Rollback agent | Rollback successfully applied to production | Record rollback proof; notify human operator |
+
+#### System Events (audit log only — not in PipelineEvent enum)
+
+| System Event | Emitted When | Required Metadata |
+|---|---|---|
+| `HMAC_KEY_ROTATED` | HMAC signing key version changes | `old_version`, `new_version`, `rotated_by` |
+| `AUDIT_LOG_EVICTION` | In-memory log reaches 10,000 entries | `evicted_count`, `sink_configured` |
+| `AUDIT_SINK_UNCONFIGURED` | Eviction occurs with no configured sink | `evicted_count` |
+| `PROMPT_INJECTION_SUSPECTED` | Injection pattern detected in context | `matched_pattern`, `gate_name`, `truncated_context` |
+| `CONTEXT_TRUNCATED` | Input context truncated to 4,096 chars | `original_length`, `gate_name` |
+| `HANDLER_OVERRIDDEN` | Built-in handler replaced via `on()` | `event_name`, `replaced_by` |
+| `DUPLICATE_HUMAN_APPROVAL` | Second `HUMAN_APPROVED` for same run | `proof_id`, `duplicate_actor_id` |
+| `APPROVAL_TIMEOUT` | Human approval window expires | `timeout_secs`, `environment` |
+| `PIPELINE_ERROR` | Agent gate raises an unhandled exception | `gate_name`, `exception_type`, `exception_msg` |
+| `OUT_OF_SEQUENCE_EVENT` | Event emitted outside valid state | `event_name`, `current_state` |
+| `HUMAN_APPROVAL_TIMEOUT` | Human approval window expires (alias) | `timeout_secs`, `environment`, `actor_id=None` |
+
+> **LLM provider failure mid-chain** (EDGE-D011): If a `reasoning_fn` raises an
+> exception due to LLM provider failure (network error, rate limit, model error), the
+> exception propagates through `AgentGate.run()` to `AgentLayer.run_gate()` to
+> `OrchestratingAgent.emit()`. The orchestrator catches it, emits a `PIPELINE_ERROR`
+> audit event, and treats the result as `AgentDecision.DEFER` (escalate to human).
+> The partial `ReasoningChain` built before the exception is **discarded** — it is never
+> sealed and never appears in the audit log. Retry logic is the caller's responsibility;
+> the orchestrator's `max_fix_retries` applies only to `TEST_FAILED` retries, not to
+> LLM provider failures.
 
 ### Handler Replacement Policy
 
@@ -608,7 +688,7 @@ Full tamper protection requires:
 
 ## §8 — PipelineConfig Validation
 
-<!-- Addresses EDGE-151 -->
+<!-- Addresses EDGE-151, EDGE-CFG-031 -->
 
 `PipelineConfig` validates all fields at construction time:
 
@@ -622,6 +702,27 @@ Full tamper protection requires:
 
 `PipelineConfig.__post_init__()` raises `ValueError` with a descriptive message for
 any constraint violation.
+
+**Field name mapping from YAML config (EDGE-CFG-031):**
+
+The pipeline application configuration YAML (see `specs/pipeline-config-spec.md`) uses
+the name `retry_max` for this field. The YAML loader maps it to `max_fix_retries` in the
+Python `PipelineConfig` class:
+
+```python
+# In PipelineAppConfig._build_pipeline_config():
+pipeline_config = PipelineConfig(
+    name=...,
+    secret_key=resolved_hmac_key,
+    model_id=...,
+    require_human_approval=app_config.human_approval_required,
+    max_fix_retries=app_config.retry_max,   # YAML: retry_max → Python: max_fix_retries
+)
+```
+
+Both names (`retry_max` and `max_fix_retries`) refer to the maximum number of agent
+fix-retry attempts before human escalation, per CONSTITUTION §6. The YAML uses
+`retry_max` for conciseness; the Python class uses `max_fix_retries` for explicitness.
 
 ---
 
@@ -663,7 +764,7 @@ proof2 = chain.seal()  # Proof of attempt 2 (includes all 3 steps)
 
 ## §9 — ACDPipeline Deployment Gate Ordering
 
-<!-- Addresses EDGE-146 -->
+<!-- Addresses EDGE-146, EDGE-D090, EDGE-D007 -->
 
 `ACDPipeline.request_deployment()` MUST verify that the deterministic layer has
 passed for the current pipeline run before generating a deployment proof:
@@ -675,6 +776,51 @@ passed for the current pipeline run before generating a deployment proof:
    `GateFailureError("Deterministic gates must pass before requesting deployment")`.
 3. This prevents an agent from requesting a production deployment without running
    the trust anchor layer.
+
+### Environment Binding — Responsibility Boundary
+
+<!-- Addresses EDGE-D090 -->
+
+`ProofVerifier.verify()` does **NOT** check whether `proof.metadata["environment"]`
+matches the intended deployment target. Environment verification is the
+responsibility of the **caller** (`ACDPipeline.request_deployment()`), which:
+
+1. Sets `metadata["environment"] = environment` when calling `chain.seal()`.
+2. Before accepting a proof for production, checks
+   `proof.metadata.get("environment") == "production"` and rejects proofs
+   where the value is absent or mismatched with `PROOF_ENV_MISMATCH`.
+
+This separation of concerns is intentional: `ProofVerifier` is a pure
+cryptographic checker (chain integrity + HMAC); business logic (environment
+matching, replay prevention) lives in the pipeline layer.
+
+**Replay attack mitigation**: A staging proof MUST NOT be accepted for a
+production deployment. The pipeline layer enforces this by checking the
+`environment` metadata field BEFORE calling `ProofVerifier.verify()`.
+`ProofVerifier.verify()` being `True` does not imply the proof is valid
+for the requested environment — both checks MUST pass.
+
+### Concurrent `request_deployment()` Calls
+
+<!-- Addresses EDGE-D007 -->
+
+Two concurrent calls to `ACDPipeline.request_deployment()` for the same
+`environment` from the same pipeline instance present a race condition:
+
+- **CPython (GIL)**: The GIL serializes Python bytecode execution, so two
+  threads calling `request_deployment()` will not produce interleaved proof
+  state. However, the POSIX timestamp in each proof will differ, yielding two
+  distinct `proof_id` values.
+- **Multi-process deployments**: If multiple processes share a pipeline name
+  and secret key (e.g., horizontally scaled workers), callers MUST use a
+  distributed lock (Redis `SETNX`, database advisory lock) to ensure only one
+  deployment request is outstanding per `(pipeline_name, environment)` tuple.
+- The audit log `UNIQUE` constraint on `entry_id` (UUID4) prevents duplicate
+  entries from concurrent writes in the SQLite-backed audit logger.
+
+For production use, callers SHOULD implement idempotency by passing a
+deterministic `chain_id` (e.g., derived from the deployment artifact hash and
+environment) to prevent duplicate deployment proofs.
 
 ---
 
@@ -694,6 +840,17 @@ The following scenarios require architectural changes and are tracked separately
 | EDGE-139-031 | Filed (issue #143) | `DeterministicLayer.register()` does not enforce gate name uniqueness |
 | EDGE-139-064 | Filed (issue #144) | `PipelineConfig` missing `__post_init__` field validation |
 | EDGE-139-035 | Filed (issue #145) | `ACDPipeline.request_deployment()` should raise `HumanApprovalRequiredError` for production |
+| EDGE-IT-009 | #278 | `AuditEntry` missing HMAC-SHA256 `signature` field (integration test context) |
+| EDGE-IT-027 | #282 | Empty `DeterministicLayer` must raise `GateFailureError` (vacuous pass bug) |
+| EDGE-IT-042 | #287 | `HumanApprovalRequiredError` missing `proof_id` attribute |
+| EDGE-IT-055 | #296 | Missing built-in handlers for `ALL_TESTS_PASS`, `STAGING_HEALTHY`, `HUMAN_APPROVED`, `HUMAN_REJECTED` |
+| EDGE-D086 | Tracked (§11.1) | `AuditEntry` missing `signature` field — code does not implement HMAC signing mandated by §7 |
+| EDGE-D091 | Tracked (§11.2) | `DeterministicLayer.all_passed([])` returns `True` vacuously — code bug contradicting §4 |
+| EDGE-D087 | Tracked (§11.3) | `ProofBuilder.__init__()` only checks `if not secret_key` — does not enforce 32-byte minimum from §3 |
+| EDGE-D085 | Tracked (§11.4) | `ACDPipeline` and `OrchestratingAgent` docstrings contradict Constitution §3 on human approval |
+| EDGE-D031–D035 | To be filed | Multi-tenancy isolation: cross-tenant proof reuse, chain_id collision, tenant-scoped audit access |
+
+<!-- Addresses EDGE-IT-009, EDGE-IT-027, EDGE-IT-042, EDGE-IT-055 — see specs/integration-test-spec.md §10 -->
 
 ### Metadata Key Safety in Python Layer
 
@@ -713,6 +870,70 @@ Keys and values are arbitrary Python strings/objects that will be JSON-serialize
 > **EDGE-139-048**: Tests for metadata injection MUST focus on the SQLite layer
 > (parameterized queries prevent SQL injection) and the AgentGate layer (injection
 > pattern detection). The `ProofBuilder` itself is not the injection boundary.
+
+---
+
+## §11 — Code Implementation Gaps (Spec Is Authoritative)
+
+<!-- Addresses EDGE-D085, EDGE-D086, EDGE-D087, EDGE-D091 -->
+
+The following known discrepancies exist between this spec (the authoritative source
+of truth) and the current Python implementation. Documentation MUST reflect the
+**spec behavior**. Each discrepancy has a corresponding GitHub Issue; the code
+will be updated to match the spec in a subsequent implementation issue.
+
+### §11.1 — AuditEntry Missing `signature` Field
+
+**Spec says** (§7): Every `AuditEntry` MUST include an HMAC-SHA256 `signature` field
+computed over the canonical JSON of the entry (excluding the `signature` field).
+
+**Code does** (`maatproof/orchestrator.py`): `AuditEntry` dataclass has no `signature`
+field. `_record_audit()` does not call `sign_entry()`.
+
+**Documentation impact**: API reference for `AuditEntry` must document the spec-defined
+`signature` field as the target interface. A note SHOULD indicate the field is pending
+implementation (tracked in GitHub Issues #140, #278, and `[Spec Gap] EDGE-D086`).
+
+### §11.2 — DeterministicLayer Empty-Gate Vacuous Pass
+
+**Spec says** (§4): A `DeterministicLayer` with zero registered gates MUST raise
+`GateFailureError` when invoked — an empty gate list is a configuration error.
+
+**Code does** (`maatproof/layers/deterministic.py`): `run_all()` returns `[]` for an
+empty gate list. `all_passed([])` returns `True` (Python's `all([]) == True` vacuous truth).
+
+**Documentation impact**: Trust anchor gate documentation MUST note that pipelines
+with no registered gates will incorrectly appear to pass. Callers MUST register at
+least the six required gates (§4). Fix tracked in GitHub Issues #141, #282, and
+`[Spec Gap] EDGE-D091`.
+
+### §11.3 — ProofBuilder Key Length Not Enforced
+
+**Spec says** (§3): `ProofBuilder.__init__()` raises `ValueError` if
+`len(secret_key) < 32`.
+
+**Code does**: Only checks `if not secret_key` — accepts any truthy `bytes` value,
+including a 1-byte key `b"\x00"`.
+
+**Documentation impact**: API reference for `ProofBuilder.__init__()` MUST document
+the 32-byte minimum constraint as a hard requirement. Fix tracked in GitHub Issues
+#142 and `[Spec Gap] EDGE-D087`.
+
+### §11.4 — ACDPipeline Docstring Contradicts Constitution §3
+
+**Spec says** (CONSTITUTION.md §3): Human approval is a policy-configurable gate,
+NOT a universal protocol mandate. ADA is the default. Human approval is required
+only when `require_human_approval` policy rule is declared.
+
+**Code does** (`maatproof/pipeline.py`): `ACDPipeline` docstring states *"The one
+invariant: human approval is always required before production."* This is
+constitutionally incorrect for ADA-mode pipelines (`PipelineConfig(require_human_approval=False)`).
+
+**Documentation impact**: The Human Approval Invariant section of user-facing docs
+MUST accurately reflect Constitution §3 — human approval is opt-in via
+`PipelineConfig(require_human_approval=True)` or the Deployment Contract policy rule.
+`OrchestratingAgent` docstring has the same issue and will be fixed together. Fix tracked
+in GitHub Issue `[Spec Gap] EDGE-D085`.
 
 <!-- Addresses EDGE-102, EDGE-106, EDGE-112, EDGE-113, EDGE-115, EDGE-117,
      EDGE-119, EDGE-124, EDGE-126, EDGE-127, EDGE-129, EDGE-132, EDGE-135,

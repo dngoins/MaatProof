@@ -41,6 +41,20 @@ five required gates: `lint`, `compile`, `security_scan`, `artifact_sign`, and
 `compliance`.  See `specs/proof-chain-spec.md §4`.
 <!-- Addresses EDGE-119, EDGE-132 -->
 
+**Per-environment gate requirements**: The `enabled_gates` list in the pipeline
+application configuration file (see `specs/pipeline-config-spec.md`) MUST satisfy the
+following minimum sets, enforced at startup:
+
+| Environment | Pipeline Mode | Minimum Required Gates |
+|---|---|---|
+| `dev` | ACI | `lint`, `compile`, `security_scan` |
+| `uat` | ACD | All 5 above |
+| `prod` | ACD | All 5 above |
+
+A config file that omits any required gate for its environment/mode is rejected at
+startup with `PipelineConfigError: GATES_INSUFFICIENT_FOR_ENV`.
+<!-- Addresses EDGE-CFG-024, EDGE-CFG-025, EDGE-CFG-028, EDGE-CFG-064 -->
+
 **Agent execution ordering**: The `DeterministicLayer` MUST execute before any
 `AgentLayer` gate for the same pipeline run.  The `OrchestratingAgent` tracks this
 invariant and raises `GateFailureError` if an agent gate is invoked before the
@@ -276,7 +290,7 @@ A work item is "done" only when **all** of the following are true:
 - [ ] User story and acceptance criteria exist in the linked issue
 - [ ] Implementation matches acceptance criteria
 - [ ] Unit tests written and passing
-- [ ] Integration tests written and passing (where applicable)
+- [ ] Integration tests written and passing (where applicable) — see `specs/integration-test-spec.md` for the ACI/ACD integration test specification
 - [ ] CI pipeline passes (lint, compile, security scan)
 - [ ] PR review agent scores all dimensions ≥ 7
 - [ ] At least one human reviewer has approved the PR
@@ -284,6 +298,8 @@ A work item is "done" only when **all** of the following are true:
 - [ ] Configuration defined for all target environments
 - [ ] No unresolved review comments remain
 - [ ] PR merged via squash merge with clean commit message
+
+<!-- Addresses EDGE-IT-073, EDGE-IT-074 — integration test runnable locally and in CI -->
 
 ---
 
