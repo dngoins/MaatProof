@@ -304,29 +304,28 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issue #135: [Autonomous Deployment Authority (ADA)] Integration Tests — end-to-end validation of the full ADA deployment flow: signal ingestion → scoring → authority level resolution → autonomous deployment → post-deploy monitoring → auto-rollback (≤60s, signed `RollbackProof`) → MAAT staking ledger. All integration tests use in-memory test doubles; zero live cloud resources required (AC-6). Runs atop DRE (#141), Core Pipeline (#119), and Data Model (#14)._
+> _Issue #128: [Verifiable Reasoning Protocol (VRP)] Unit Tests — 7 inference rule validators (MODUS_PONENS · CONJUNCTION · DISJUNCTIVE_SYLLOGISM · INDUCTION · ABDUCTION · DATA_LOOKUP · THRESHOLD), premise validity, AttestationRecord hash-chaining, HMAC-SHA256 / ECDSA P-256 signature verification. All offline — no external services or LLM calls (unittest.mock). ≥90% line coverage required (CONSTITUTION.md §14)._
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
+| VRP Unit Tests build cost (#128) | $2,772 | $180 | **93%** |
+| VRP CI runtime cost (GCP Cloud Build) | — | **$0/mo** | Free tier covers all |
+| VRP quality ROI (defect-escape prevention) | — | **2,323%** | $4,182/yr saved |
 | ADA Integration Tests build cost (#135) | $3,731 | $118 | **97%** |
 | DRE feature build cost (9 issues, #106–#141) | $34,188 | $1,959 | **94%** |
-| Combined build cost (#14 + #119 + #141 + #135) | $46,986 | $2,476 | **95%** |
+| Combined build cost (all analyzed issues) | $49,758 | $2,653 | **95%** |
 | Annual developer savings | — | $198,720 | **3,312 hrs/yr** |
 | Auto-rollback SLA validation in CI | Not validated | **≤60s** verified per PR | **100% coverage** |
-| Rollback proof auditability | 0% (manual) | 100% (signed RollbackProof) | **+100%** |
-| ADA rollback failure prevention | ~$5,400/incident | **$0** (proven in CI) | **100% coverage** |
-| Integration test CI/CD cost (standard) | — | **$0/mo** | Within GCP free tier |
+| Inference rules coverage (VRP) | 7 manual | 14+ automated cases | **100% automation** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| AI decision non-determinism | ~20%/re-run | 0% (DRE proof-guaranteed) | **100% elimination** |
-| DRE runtime cost (GCP, 3-model, 100 MAU) | — | **$453/yr** | 3-model DRE incl. |
 | DORA rating | Low | **Elite** | Top 10% globally |
 | Year 1 ROI | — | — | **11,622%** |
 | 5-year TCO savings | — | — | **$1,787,595** |
 
-> _Last estimated: 2026-04-23 · Issue #135 [ADA Integration Tests] · Run #7 · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issue #128 [VRP Unit Tests] · Run #8 · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)

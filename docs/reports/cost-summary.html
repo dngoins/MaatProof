@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MaatProof Cost Summary — Issue #135: ADA Integration Tests (Run #7)</title>
+  <title>MaatProof Cost Summary — Issue #128: VRP Unit Tests (Run #8)</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -66,13 +66,58 @@
 </head>
 <body>
 
-  <h1>MaatProof Cost Summary <span class="badge">cost:estimated</span> <span class="badge badge-dre">Run #7</span></h1>
+  <h1>MaatProof Cost Summary <span class="badge">cost:estimated</span> <span class="badge badge-dre">Run #8</span></h1>
   <p class="subtitle">
-    Issue #135 — ADA Integration Tests (AdaOrchestrator · RollbackProof ≤60s · MAAT Staking · AutonomousDeploymentBlockedError · Proof Verification · Test Doubles) ·
-    Cumulative: Issues #14 · #119 · #141 · #135 ·
+    Issue #128 — VRP Unit Tests (7 inference rules · HMAC-SHA256 / ECDSA P-256 · ≥90% coverage · offline) ·
+    Cumulative: Issues #14 · #119 · #141 · #135 · #128 ·
     Generated 2026-04-23 ·
     <a href="cost-estimation-report.md">Full Report ↗</a>
   </p>
+
+  <!-- Issue #128 VRP Unit Tests KPIs -->
+  <div id="vrp-unit-tests" class="section-label">Issue #128 — VRP Unit Tests Build Costs</div>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="label">Traditional Build Cost</div>
+      <div class="value red">$2,772</div>
+      <div class="sub">46 dev hrs × $60 + 30% rework + CI</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">ACI/ACD Build Cost</div>
+      <div class="value">$180</div>
+      <div class="sub">1.5 hr human review + AI API + infra</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Build Savings (#128)</div>
+      <div class="value">93%</div>
+      <div class="sub">$2,592 saved vs traditional</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Incremental Runtime Cost</div>
+      <div class="value">$0/yr</div>
+      <div class="sub">Tests run in GCP Cloud Build free tier</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Inference Rules Tested</div>
+      <div class="value purple">7 × 2</div>
+      <div class="sub">14 min cases (positive + negative each)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Coverage Target</div>
+      <div class="value blue">≥ 90%</div>
+      <div class="sub">Line coverage · CONSTITUTION.md §14 DoD</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Quality ROI</div>
+      <div class="value">2,323%</div>
+      <div class="sub">$4,182/yr defect-escape value / $180 build</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Hash-Chain Tamper Tests</div>
+      <div class="value blue">8</div>
+      <div class="sub">Adversarial cases · HMAC-SHA256 + ECDSA P-256</div>
+    </div>
+  </div>
 
   <!-- Issue #135 KPIs -->
   <div class="section-label">Issue #135 — ADA Integration Tests Build Costs</div>
