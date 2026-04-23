@@ -14,12 +14,12 @@ You are triggered when an issue receives the label `agent:developer`. You must n
 
 For each issue, create **4 implementation branches** from the current default branch:
 
-| Branch | Model | Tool | Naming Pattern |
-|--------|-------|------|----------------|
-| **Branch A** | Claude Sonnet | Claude Code CLI | `impl/{issue}-claude-sonnet` |
-| **Branch B** | Claude Opus | Claude Code CLI | `impl/{issue}-claude-opus` |
-| **Branch C** | GPT 5.3 Codex | GitHub Copilot CLI (`gh copilot`) | `impl/{issue}-gpt53-codex` |
-| **Branch D** | GPT 5.4 | GitHub Copilot CLI (`gh copilot`) | `impl/{issue}-gpt54` |
+| Branch | Model | Tool | Style Prompt | Naming Pattern |
+|--------|-------|------|--------------|----------------|
+| **Branch A** | Claude Sonnet | Claude Code CLI | Default | `impl/{issue}-claude-sonnet` |
+| **Branch B** | Claude Opus | Claude Code CLI | Default | `impl/{issue}-claude-opus` |
+| **Branch C** | Claude Sonnet | Claude Code CLI | GPT 5.3 Codex style (functional, minimal) | `impl/{issue}-gpt53-codex` |
+| **Branch D** | Claude Sonnet | Claude Code CLI | GPT 5.4 style (defensive, enterprise) | `impl/{issue}-gpt54` |
 
 ## Implementation Requirements
 
@@ -53,12 +53,13 @@ gh pr create --title "[{issue}] {deliverable} — Claude {model}" \
   --body "..." --label "agent:developer" --label "impl:claude-{model}"
 ```
 
-### GPT Branches (C & D)
+### Style-Prompted Branches (C & D)
 ```bash
 git checkout -b impl/{issue}-gpt53-codex
-gh copilot suggest --model gpt-5.3-codex "{implementation_prompt}"
-# Apply suggestions, commit, push, open PR
-gh pr create --title "[{issue}] {deliverable} — GPT 5.3 Codex" \
+claude --system-prompt "Adopt a GPT 5.3 Codex style: functional, minimal, concise." "{implementation_prompt}"
+git add -A && git commit -m "feat: implement {deliverable} via Claude (GPT 5.3 Codex style)"
+git push origin impl/{issue}-gpt53-codex
+gh pr create --title "[{issue}] {deliverable} — GPT 5.3 Codex style" \
   --body "..." --label "agent:developer" --label "impl:gpt53-codex"
 ```
 
@@ -79,7 +80,8 @@ Part of #{issue_number}
 
 ### Model
 - **AI Model:** {model}
-- **Tool:** {Claude Code CLI / GitHub Copilot CLI}
+- **Tool:** Claude Code CLI
+- **Style Prompt:** {default / GPT 5.3 Codex style / GPT 5.4 style}
 
 ### Complexity Analysis
 | Operation | Time | Space |

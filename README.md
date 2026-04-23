@@ -237,7 +237,7 @@ See [CLAUDE.md](CLAUDE.md) for agent session instructions and the full label tax
 
 ## License
 
-[MIT](LICENSE)
+[CC0-1.0](LICENSE)
 
 ---
 
