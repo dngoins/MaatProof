@@ -361,6 +361,549 @@ config_regulated = PipelineConfig(
 - Agents cannot self-declare their own rollback thresholds (would allow setting `error_rate_max = 1.0`)
 - Threshold values are validated against policy minimums during Condition 1
 
+---
+
+## Python ADA Reference Implementation — Signal Scoring & Authority Model
+
+<!-- Addresses EDGE-ADA-001, EDGE-ADA-002, EDGE-ADA-003, EDGE-ADA-004, EDGE-ADA-005,
+     EDGE-ADA-006, EDGE-ADA-007, EDGE-ADA-010, EDGE-ADA-011, EDGE-ADA-013,
+     EDGE-ADA-014, EDGE-ADA-015, EDGE-ADA-016, EDGE-ADA-017, EDGE-ADA-018,
+     EDGE-ADA-019, EDGE-ADA-020, EDGE-ADA-023, EDGE-ADA-024, EDGE-ADA-025,
+     EDGE-ADA-026, EDGE-ADA-027, EDGE-ADA-028, EDGE-ADA-029, EDGE-ADA-030,
+     EDGE-ADA-034, EDGE-ADA-036, EDGE-ADA-038, EDGE-ADA-039, EDGE-ADA-047,
+     EDGE-ADA-048, EDGE-ADA-056, EDGE-ADA-057, EDGE-ADA-067, EDGE-ADA-068,
+     EDGE-ADA-069, EDGE-ADA-070 -->
+
+The `maatproof` Python package implements a **Python-layer ADA model** that maps the
+7-condition binary protocol authorization onto a **5-signal weighted composite score**
+suitable for rule-based authority-level classification and unit testing.  This section
+is the authoritative specification for the Python reference implementation used in
+`maatproof/ada.py` and tested in `tests/test_ada.py`.
+
+> **Scope clarification**: The Rust/on-chain layer uses the 7-condition binary
+> authorization model (Conditions 1–7 above).  The Python layer computes a continuous
+> composite score [0, 1] that serves as a proxy for those conditions in environments
+> where the full Rust stack is not yet deployed.
+
+---
+
+### §P1 — Multi-Signal Deployment Scoring
+
+<!-- Addresses EDGE-ADA-001 through EDGE-ADA-012 -->
+
+A deployment receives a **composite_score ∈ [0.0, 1.0]** computed from five weighted
+signals.  The signals and their weights are fixed at the protocol level; tests MUST
+verify each weight independently.
+
+| Signal | Weight | Maps to ADA Condition |
+|---|---|---|
+| `deterministic_gates` | **0.25** (25 %) | Condition 1 — Hard policy gates pass |
+| `dre_consensus` | **0.20** (20 %) | Condition 2 — DRE committee quorum |
+| `logic_verification` | **0.20** (20 %) | Condition 3 — VRP checker set validates |
+| `validator_attestation` | **0.20** (20 %) | Condition 4 — Validator quorum attests |
+| `risk_score` | **0.15** (15 %) | Condition 5 — Risk score ≥ threshold |
+
+**Invariants that unit tests MUST verify:**
+
+1. The five weights sum to exactly **1.0** (within floating-point epsilon 1e-9).
+2. Each individual signal value MUST be in **[0.0, 1.0]**; values outside this range
+   MUST raise `ValueError`.
+3. The composite score MUST be in **[0.0, 1.0]** for any valid input combination.
+4. Setting a single signal to 0.0 while all others are 1.0 MUST reduce the composite
+   score by that signal's weight (e.g., `deterministic_gates=0` → score ≤ 0.75).
+5. If any signal value is `NaN` or `±inf`, a `ValueError` MUST be raised before
+   score computation.
+
+```python
+@dataclass
+class DeploymentSignals:
+    """Input signals for the ADA composite scoring function."""
+    deterministic_gates:  float  # [0.0, 1.0]  — Condition 1 proxy
+    dre_consensus:        float  # [0.0, 1.0]  — Condition 2 proxy
+    logic_verification:   float  # [0.0, 1.0]  — Condition 3 proxy
+    validator_attestation: float  # [0.0, 1.0]  — Condition 4 proxy
+    risk_score:           float  # [0.0, 1.0]  — Condition 5 proxy
+
+SIGNAL_WEIGHTS: dict[str, float] = {
+    "deterministic_gates":   0.25,
+    "dre_consensus":         0.20,
+    "logic_verification":    0.20,
+    "validator_attestation": 0.20,
+    "risk_score":            0.15,
+}
+
+def compute_deployment_score(signals: DeploymentSignals) -> float:
+    """
+    Aggregate five weighted signals into a composite score ∈ [0.0, 1.0].
+
+    Raises:
+        ValueError: if any signal value is outside [0.0, 1.0] or is non-finite.
+    """
+    score = (
+        signals.deterministic_gates   * SIGNAL_WEIGHTS["deterministic_gates"]   +
+        signals.dre_consensus         * SIGNAL_WEIGHTS["dre_consensus"]         +
+        signals.logic_verification    * SIGNAL_WEIGHTS["logic_verification"]    +
+        signals.validator_attestation * SIGNAL_WEIGHTS["validator_attestation"] +
+        signals.risk_score            * SIGNAL_WEIGHTS["risk_score"]
+    )
+    return round(score, 10)  # prevent floating-point drift beyond 10 decimals
+```
+
+---
+
+### §P2 — Python RiskAssessment Data Model
+
+<!-- Addresses EDGE-ADA-013 through EDGE-ADA-022 -->
+
+The Python `RiskAssessment` captures the **change-level risk inputs** that feed into
+the `risk_score` signal.  These fields differ from the Rust-layer `RiskInputs`
+(which are DRE committee inputs) — the Python layer uses developer-visible metrics.
+
+| Field | Type | Description | High-Risk Threshold |
+|---|---|---|---|
+| `files_changed` | `int ≥ 0` | Total files modified in the change set | ≥ 50 files |
+| `lines_changed` | `int ≥ 0` | Total lines added + deleted | ≥ 500 lines |
+| `critical_paths_touched` | `bool` | Change touches security/auth/payments code | `True` |
+| `new_dependencies` | `int ≥ 0` | Net new third-party packages introduced | ≥ 5 packages |
+| `test_coverage_delta` | `float` | Change in coverage %: negative = regression | < −5 % |
+| `security_scan_findings` | `int ≥ 0` | Count of Critical + High CVE findings | ≥ 1 finding |
+
+**Risk Penalty Calculations** — unit tests MUST verify each independently:
+
+```python
+def compute_risk_score(ra: RiskAssessment) -> float:
+    """
+    Compute a risk score ∈ [0.0, 1.0] from a RiskAssessment.
+    Higher score = lower risk (same convention as the Rust RiskScore 0-1000).
+    A score of 0.0 indicates maximum risk; 1.0 indicates minimum risk.
+
+    Penalty rules (applied multiplicatively):
+      - files_changed ≥ 50      → ×0.80 penalty
+      - lines_changed ≥ 500     → ×0.80 penalty
+      - critical_paths_touched  → ×0.70 penalty
+      - new_dependencies ≥ 5    → ×0.85 penalty
+      - test_coverage_delta < −5→ ×0.75 penalty
+      - security_scan_findings ≥ 1 → score = 0.0  (hard stop, non-negotiable)
+
+    Raises:
+        ValueError: if security_scan_findings < 0 or any int field < 0.
+    """
+    if ra.security_scan_findings >= 1:
+        return 0.0   # maps to Condition 6 hard stop — always blocking
+    score = 1.0
+    if ra.files_changed >= 50:        score *= 0.80
+    if ra.lines_changed >= 500:       score *= 0.80
+    if ra.critical_paths_touched:     score *= 0.70
+    if ra.new_dependencies >= 5:      score *= 0.85
+    if ra.test_coverage_delta < -5.0: score *= 0.75
+    return round(score, 10)
+```
+
+> **Spec invariant**: `security_scan_findings ≥ 1` returns **exactly 0.0** regardless
+> of all other field values.  This mirrors the Condition 6 hard stop (Critical/High
+> CVEs are always blocking and cannot be offset by other signals).
+
+**Edge-case invariants unit tests MUST verify:**
+
+| Scenario | Expected Result |
+|---|---|
+| All fields at zero-risk values | `risk_score = 1.0` |
+| `security_scan_findings = 1` with all other fields at zero risk | `risk_score = 0.0` |
+| `critical_paths_touched = True` alone | `risk_score = 0.70` |
+| All 5 non-security penalty conditions triggered simultaneously | `risk_score ≈ 0.80×0.80×0.70×0.85×0.75 = 0.2856` |
+| `test_coverage_delta = +50.0` (large improvement) | No penalty; `risk_score` unchanged |
+| `files_changed = 49` (just below threshold) | No penalty |
+| `files_changed = 50` (at threshold) | `×0.80` penalty applied |
+
+---
+
+### §P3 — Deployment Authority Levels
+
+<!-- Addresses EDGE-ADA-023 through EDGE-ADA-033 -->
+
+The composite score is mapped to a `DeploymentAuthorityLevel` via the following
+threshold table.  Thresholds are **inclusive lower bounds** (score ≥ threshold → level).
+
+```python
+class DeploymentAuthorityLevel(enum.Enum):
+    FULL_AUTONOMOUS          = "full_autonomous"          # score ≥ 0.90
+    AUTONOMOUS_WITH_MONITORING = "autonomous_with_monitoring"  # 0.75 ≤ score < 0.90
+    STAGING_AUTONOMOUS       = "staging_autonomous"       # 0.50 ≤ score < 0.75
+    DEV_AUTONOMOUS           = "dev_autonomous"           # 0.25 ≤ score < 0.50
+    BLOCKED                  = "blocked"                  # score < 0.25
+
+# Score threshold constants (unit tests MUST import and test these directly)
+AUTHORITY_THRESHOLD_FULL       = 0.90
+AUTHORITY_THRESHOLD_AUTO_MON   = 0.75
+AUTHORITY_THRESHOLD_STAGING    = 0.50
+AUTHORITY_THRESHOLD_DEV        = 0.25
+```
+
+**Boundary invariants unit tests MUST verify:**
+
+| Score | Expected Level |
+|---|---|
+| `1.00` | `FULL_AUTONOMOUS` |
+| `0.90` | `FULL_AUTONOMOUS` |
+| `0.8999…` | `AUTONOMOUS_WITH_MONITORING` |
+| `0.75` | `AUTONOMOUS_WITH_MONITORING` |
+| `0.7499…` | `STAGING_AUTONOMOUS` |
+| `0.50` | `STAGING_AUTONOMOUS` |
+| `0.4999…` | `DEV_AUTONOMOUS` |
+| `0.25` | `DEV_AUTONOMOUS` |
+| `0.2499…` | `BLOCKED` |
+| `0.00` | `BLOCKED` |
+
+**Boundary precision**: comparisons use strict `>=` for the lower bound.
+`0.25 - sys.float_info.epsilon` MUST map to `BLOCKED`.
+
+---
+
+### §P4 — Python-Layer Rollback Trigger Metrics
+
+<!-- Addresses EDGE-ADA-034 through EDGE-ADA-045 -->
+
+The Python auto-rollback protocol polls metrics every ≤ 15 seconds during a
+**15-minute observation window**.  Rollback is triggered if ANY single threshold is
+violated.  The Python layer extends the Rust `RollbackReason` enum with two
+additional triggers relevant to cloud-native deployments:
+
+```python
+class RollbackTrigger(enum.Enum):
+    ERROR_RATE_EXCEEDED  = "error_rate_exceeded"    # error_rate > error_rate_max
+    LATENCY_EXCEEDED     = "latency_exceeded"       # p99_latency_ms > p99_latency_max_ms
+    CPU_EXCEEDED         = "cpu_exceeded"           # cpu_utilization > cpu_utilization_max
+    HEALTH_CHECK_FAILED  = "health_check_failed"    # health_check_url returns non-2xx
+    AVAILABILITY_DEGRADED = "availability_degraded" # availability < availability_min
+
+@dataclass
+class RollbackThresholdsPython:
+    """
+    Python-layer rollback thresholds.  Extends the Rust RollbackThresholds with
+    CPU and health-check triggers.
+
+    All fields have defaults that represent reasonable production safety limits.
+    """
+    error_rate_max:       float = 0.01    # 1%  error rate ceiling
+    p99_latency_max_ms:   int   = 2000    # 2 s  p99 latency ceiling
+    cpu_utilization_max:  float = 0.90    # 90% CPU utilization ceiling
+    health_check_url:     str   = ""      # URL; empty string disables this trigger
+    availability_min:     float = 0.999   # 99.9% minimum availability
+    evaluation_window_secs: int = 900     # 15-minute observation window
+    poll_interval_secs:   int   = 15      # poll every 15 s (≤ 15 s per AC)
+```
+
+**Rollback trigger invariants unit tests MUST verify independently:**
+
+| Trigger | Violated When | Boundary Condition |
+|---|---|---|
+| `ERROR_RATE_EXCEEDED` | `error_rate > error_rate_max` | `error_rate = 0.01` → no rollback; `0.010001` → rollback |
+| `LATENCY_EXCEEDED` | `p99_latency_ms > p99_latency_max_ms` | `2000 ms` → no rollback; `2001 ms` → rollback |
+| `CPU_EXCEEDED` | `cpu_utilization > cpu_utilization_max` | `0.90` → no rollback; `0.9001` → rollback |
+| `HEALTH_CHECK_FAILED` | health endpoint returns non-2xx HTTP status | `200` → no rollback; `503` → rollback |
+| `AVAILABILITY_DEGRADED` | `availability < availability_min` | `0.999` → no rollback; `0.9989` → rollback |
+
+> **Strict inequality**: all rollback conditions use `>` or `<` (not `≥` or `≤`),
+> so a metric **exactly at** the threshold does NOT trigger rollback.
+
+**Multiple simultaneous violations**: If more than one threshold is violated, the
+rollback proof MUST record the **first trigger detected** as the primary reason and
+list additional violations in the `additional_triggers` field of the proof.
+
+---
+
+### §P5 — Python-Layer HMAC Signing for Deployment and Rollback Proofs
+
+<!-- Addresses EDGE-ADA-046 through EDGE-ADA-055 -->
+
+The Python layer uses **HMAC-SHA256** (matching `specs/proof-chain-spec.md §3`) to
+sign both deployment proofs and rollback proofs.  This differs from the Rust layer,
+which uses Ed25519 for `RollbackProof.proof_signature`.  The Python layer does not
+have access to an HSM or Ed25519 key material in test environments.
+
+#### Deployment Proof Signing
+
+```python
+def sign_deployment_proof(
+    proof: ReasoningProof,
+    secret_key: bytes,
+    environment: str,
+) -> str:
+    """
+    Compute HMAC-SHA256 signature over the deployment proof.
+
+    The signature covers: chain_id + root_hash + environment
+    (binding the proof to a specific deployment environment to prevent replay).
+
+    Args:
+        proof:       The sealed ReasoningProof.
+        secret_key:  Raw bytes, minimum 32 bytes (raises ValueError if shorter).
+        environment: Target environment string (e.g., "production", "staging").
+
+    Returns:
+        Hex-encoded HMAC-SHA256 digest.
+
+    Raises:
+        ValueError: if len(secret_key) < 32.
+        ValueError: if environment is empty.
+    """
+    if len(secret_key) < 32:
+        raise ValueError("HMAC secret key must be at least 32 bytes")
+    if not environment:
+        raise ValueError("environment must not be empty for deployment proof signing")
+    message = f"{proof.chain_id}:{proof.root_hash}:{environment}".encode("utf-8")
+    return hmac.new(secret_key, message, hashlib.sha256).hexdigest()
+```
+
+#### Rollback Proof Signing (Python Layer)
+
+```python
+@dataclass
+class RollbackProofPython:
+    """
+    Python-layer rollback proof.  Mirrors the Rust RollbackProof structure but uses
+    HMAC-SHA256 instead of Ed25519 (no HSM dependency in Python test environments).
+
+    The Rust on-chain RollbackProof uses Ed25519 (specs/ada-spec.md §Rollback Proof
+    Structure).  This Python struct is the audit trail complement.
+    """
+    deployment_id:        str             # UUID of the deployment
+    trigger_reason:       RollbackTrigger
+    metrics_snapshot:     dict            # {metric_name: value_at_trigger}
+    additional_triggers:  list[str]       # other thresholds also violated
+    reverted_to_artifact: str             # last-known-good artifact reference
+    rollback_at:          float           # POSIX timestamp
+    runtime_guard_hash:   str             # SHA-256 of RuntimeGuard config
+    proof_signature:      str             # HMAC-SHA256 hex digest (see below)
+
+def sign_rollback_proof(
+    proof: RollbackProofPython,
+    secret_key: bytes,
+) -> str:
+    """
+    Compute HMAC-SHA256 over the rollback proof fields (excluding proof_signature).
+
+    Canonical message: JSON with keys sorted, no whitespace, UTF-8 encoded.
+    This matches the AuditEntry signing format in specs/proof-chain-spec.md §7.
+
+    Raises:
+        RollbackProofKeyError: if secret_key is empty or None.
+        ValueError:            if len(secret_key) < 32.
+    """
+```
+
+**Signing invariants unit tests MUST verify:**
+
+| Test | Expected Outcome |
+|---|---|
+| Sign deployment proof, verify with same key | Verification returns `True` |
+| Sign deployment proof, tamper one byte, verify | Verification returns `False` |
+| Sign with key < 32 bytes | `ValueError` raised |
+| Sign rollback proof, verify with same key | Verification returns `True` |
+| Sign rollback proof, change `deployment_id`, verify | Verification returns `False` |
+| Sign with empty `secret_key` | `RollbackProofKeyError` raised |
+| Deployment proof signed with `environment="staging"`, verify for `"production"` | `PROOF_ENV_MISMATCH` / returns `False` |
+
+---
+
+### §P6 — MAAT Staking and Slashing Arithmetic (Python Layer)
+
+<!-- Addresses EDGE-ADA-056 through EDGE-ADA-066 -->
+
+The Python layer mirrors the tokenomics staking and slashing rules from
+`docs/05-tokenomics.md` and `specs/slashing-spec.md` for use in unit tests.
+
+#### Fixed Minimum Staking Amounts
+
+Staking amounts are **fixed minimums by environment** (not proportional to deployment
+risk score).  Tests for issue #130 that assert "proportional to risk" should be
+interpreted as: *the minimum stake for the target environment must be held; additional
+stake is at the agent's discretion and provides no protocol benefit*.
+
+| Environment | Minimum Agent Stake |
+|---|---|
+| `dev` / sandbox | 100 $MAAT |
+| `staging` | 1,000 $MAAT |
+| `production` | 10,000 $MAAT |
+
+```python
+AGENT_MIN_STAKE: dict[str, int] = {
+    "dev":        100,
+    "sandbox":    100,
+    "staging":   1_000,
+    "production": 10_000,
+}
+
+def compute_required_stake(environment: str) -> int:
+    """
+    Return the minimum $MAAT stake required for the given deployment environment.
+
+    Raises:
+        ValueError: if environment is not a recognised deployment target.
+    """
+    if environment not in AGENT_MIN_STAKE:
+        raise ValueError(f"Unknown deployment environment: {environment!r}")
+    return AGENT_MIN_STAKE[environment]
+```
+
+#### Slash Amount Calculations
+
+```python
+class SlashCondition(enum.Enum):
+    AGENT_MALICIOUS_DEPLOY    = "AGENT_MALICIOUS_DEPLOY"    # 50% of stake
+    AGENT_POLICY_VIOLATION    = "AGENT_POLICY_VIOLATION"    # 25% of stake
+    AGENT_FALSE_ATTESTATION   = "AGENT_FALSE_ATTESTATION"   # 50% of stake
+    VAL_DOUBLE_VOTE           = "VAL_DOUBLE_VOTE"           # 100% of stake
+    VAL_INVALID_ATTESTATION   = "VAL_INVALID_ATTESTATION"   # 50% of stake
+    VAL_COLLUSION             = "VAL_COLLUSION"             # 100% of stake
+    VAL_LIVENESS              = "VAL_LIVENESS"              # 5% of stake
+
+def compute_slash_amount(current_stake: int, condition: SlashCondition) -> int:
+    """
+    Compute the slash amount in $MAAT for the given condition.
+
+    Slashes are calculated as a percentage of current_stake at time of slash.
+    Integer division is used (floor); no fractional $MAAT.
+
+    Raises:
+        ValueError: if current_stake < 0.
+    """
+    if current_stake < 0:
+        raise ValueError("current_stake must be non-negative")
+    table = {
+        SlashCondition.AGENT_MALICIOUS_DEPLOY:    current_stake // 2,
+        SlashCondition.AGENT_POLICY_VIOLATION:    current_stake // 4,
+        SlashCondition.AGENT_FALSE_ATTESTATION:   current_stake // 2,
+        SlashCondition.VAL_DOUBLE_VOTE:           current_stake,
+        SlashCondition.VAL_INVALID_ATTESTATION:   current_stake // 2,
+        SlashCondition.VAL_COLLUSION:             current_stake,
+        SlashCondition.VAL_LIVENESS:              current_stake // 20,
+    }
+    return table[condition]
+
+def distribute_slashed_funds(
+    slash_amount: int,
+    automatic_slash: bool = False,
+) -> dict[str, int]:
+    """
+    Distribute slashed $MAAT per the protocol rules.
+
+    For automatic slashes (VAL_DOUBLE_VOTE, VAL_LIVENESS), the whistleblower
+    share goes to DAO treasury instead.
+
+    Returns:
+        {"burned": int, "whistleblower": int, "dao": int}
+    """
+    burned = slash_amount // 2
+    if automatic_slash:
+        whistleblower = 0
+        dao = slash_amount - burned
+    else:
+        whistleblower = slash_amount // 4
+        dao = slash_amount - burned - whistleblower
+    return {"burned": burned, "whistleblower": whistleblower, "dao": dao}
+```
+
+**Arithmetic invariants unit tests MUST verify:**
+
+| Condition | Stake | Expected Slash | Notes |
+|---|---|---|---|
+| `AGENT_MALICIOUS_DEPLOY` | 10,000 | 5,000 | 50% |
+| `AGENT_POLICY_VIOLATION` | 10,000 | 2,500 | 25% |
+| `AGENT_FALSE_ATTESTATION` | 10,000 | 5,000 | 50% |
+| `VAL_DOUBLE_VOTE` | 100,000 | 100,000 | 100% |
+| `VAL_INVALID_ATTESTATION` | 100,000 | 50,000 | 50% |
+| `VAL_COLLUSION` | 100,000 | 100,000 | 100% |
+| `VAL_LIVENESS` | 100,000 | 5,000 | 5% |
+| Distribution of 10,000 (non-automatic) | — | burned=5,000 / whistle=2,500 / dao=2,500 | 50/25/25 |
+| Distribution of 10,000 (automatic) | — | burned=5,000 / whistle=0 / dao=5,000 | 50/0/50 |
+| `current_stake = 0` | any condition | 0 | no tokens to slash |
+| `current_stake = 1` (VAL_LIVENESS) | 1 | 0 | floor(1/20) = 0 |
+
+---
+
+### §P7 — AutonomousDeploymentBlockedError — Raise Conditions and Contract
+
+<!-- Addresses EDGE-ADA-067 through EDGE-ADA-075 -->
+
+When `ADA.compute_deployment_score()` maps to `DeploymentAuthorityLevel.BLOCKED`,
+the implementation MUST raise `AutonomousDeploymentBlockedError` — NOT
+`HumanApprovalRequiredError`.
+
+```python
+# CORRECT — for BLOCKED authority level:
+raise AutonomousDeploymentBlockedError(
+    reason="composite_score below BLOCKED threshold (0.25)",
+    authority_level="blocked",
+    deployment_score={
+        "composite": composite_score,
+        "signals": signals.to_dict(),
+        "risk_assessment": risk_assessment.to_dict(),
+    },
+    trace_id=trace_id,
+)
+
+# INCORRECT — must NOT be raised for ADA-managed pipelines:
+raise HumanApprovalRequiredError(...)  # only for legacy require_human_approval=True paths
+```
+
+**Conditions that trigger `AutonomousDeploymentBlockedError`:**
+
+| Condition | Why BLOCKED |
+|---|---|
+| `composite_score < 0.25` | Insufficient multi-signal confidence |
+| `risk_assessment.security_scan_findings ≥ 1` | Hard stop — always maps to risk_score=0.0 and BLOCKED |
+| All 7 ADA conditions fail simultaneously | Maximum failure scenario |
+| Only the risk score signal fails (others pass) | risk_score=0 drags composite below threshold |
+
+**Error contract invariants unit tests MUST verify:**
+
+| Test | Expected Outcome |
+|---|---|
+| BLOCKED → `AutonomousDeploymentBlockedError` raised | `isinstance(exc, AutonomousDeploymentBlockedError)` |
+| BLOCKED → `HumanApprovalRequiredError` NOT raised | `not isinstance(exc, HumanApprovalRequiredError)` |
+| `exc.authority_level == "blocked"` | True |
+| `exc.deployment_score` is a dict | True |
+| `exc.to_dict()["error"] == "AutonomousDeploymentBlockedError"` | True |
+| `str(exc)` contains "Autonomous deployment blocked" | True |
+| `str(exc)` contains "authority_level=blocked" | True |
+| `AutonomousDeploymentBlockedError` is a subclass of `MaatProofError` | True |
+| `AutonomousDeploymentBlockedError` is NOT a subclass of `HumanApprovalRequiredError` | True |
+| `except (HumanApprovalRequiredError, AutonomousDeploymentBlockedError)` catches both | True |
+
+---
+
+### §P8 — Compliance and Audit Trail Integration
+
+<!-- Addresses EDGE-ADA-071, EDGE-ADA-072, EDGE-ADA-073 -->
+
+Every `AutonomousDeploymentBlockedError` MUST be recorded in the immutable audit log
+before the exception propagates to the caller (CONSTITUTION §7).
+
+```python
+# ADA orchestrator MUST perform this sequence atomically before raising:
+audit_log.append(AuditEntry(
+    event="ADA_DEPLOYMENT_BLOCKED",
+    result="BLOCKED",
+    metadata={
+        "authority_level":  "blocked",
+        "composite_score":  composite_score,
+        "trace_id":         trace_id,
+        "reason":           reason,
+        "regulation_refs": ["SOC2:CC6.1", "HIPAA:164.312a2i",
+                             "SOX:ITGC-IT-CC-03", "EU-AI-Act:Art14"],
+    },
+))
+raise AutonomousDeploymentBlockedError(reason=reason, ...)
+```
+
+The audit entry MUST be signed with HMAC-SHA256 using the pipeline's `secret_key`
+(see `specs/proof-chain-spec.md §7`).  Tests MUST mock the audit log and verify the
+`ADA_DEPLOYMENT_BLOCKED` entry is written with the correct fields before the
+exception is raised.
+
+---
+
 ## References
 
 - Whitepaper §3.7 — Autonomous Deployment Authority (ADA)
@@ -371,3 +914,8 @@ config_regulated = PipelineConfig(
 - Casper [10]: Buterin & Griffith, 2017 (slashing economic analogy)
 - NIST AI RMF [19] (human oversight requirements)
 - EU AI Act [20] (traceability requirements)
+- `specs/slashing-spec.md` — Slash conditions and distribution rules
+- `specs/proof-chain-spec.md §3` — HMAC key requirements
+- `specs/proof-chain-spec.md §7` — Audit entry signing
+- `docs/05-tokenomics.md` — Agent staking minimum amounts
+- `maatproof/exceptions.py` — AutonomousDeploymentBlockedError definition
