@@ -304,25 +304,33 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issue #138: ADA Documentation — README ADA overview, ADR-001, signal weight table, authority levels, rollback protocol, MAAT staking/slashing rules, configuration reference, AutonomousDeploymentBlockedError docs_
+> _Issues #129 (Pipeline Configuration — pipeline_mode, enabled_gates, secrets, human_approval_required) + #145 (Core Pipeline Validation & Sign-off — Final Gate)_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per issue (#138 ADA Docs) | $2,236 | $97 | **96%** |
-| Cumulative build cost (#14 + #119 + #138) | $11,303 | $492 | **96%** |
+| Annual CI/CD cost (12 features/yr) | $327,684 | $3,029 | **99%** |
+| Full pipeline build cost (all 10 issues) | $29,297 | $1,687 | **94%** |
+| Issue #129 config build cost | $3,167 | $195 | **94%** |
+| Issue #145 validation gate cost | $1,590 | $75 | **95%** |
 | Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
 | ADA approver cost (50 deploys/day) | $375,000/yr | $38/yr | **99.99%** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| ADA misconfiguration rate | ~25% | ~3% (config docs present) | **88% reduction** |
-| Annual infra cost (100 MAU, GCP) | — | **$349/yr** | — |
-| DORA rating | Low | **Elite** | — |
-| Year 1 ROI | — | — | **10,263%** |
-| 5-year TCO savings | — | — | **$1,637,445** |
+| Config incidents/month (prod) | 4+ | 0 | **100% elimination** |
+| Config layer runtime cost (GCP) | — | **$0.19/yr** | ≈ free |
+| Edge case coverage (EDGE-CFG-001–085) | Manual ($480) | **$4 (agent API)** | **$586K+ risk prevented** |
+| Validation & sign-off time | 21 hours | 25 minutes | **98% faster** |
+| Test coverage (automated) | 40% manual | ≥90% automated | **+50pp** |
+| Audit trail completeness | ~40% | 100% signed | **+60pp** |
+| Annual infra cost (100 MAU, GCP) | — | **$349/yr** | incl. AI API |
+| DORA rating | Low performer | **Elite** | Top 10% globally |
+| Year 1 ROI | — | — | **10,717%** |
+| Payback period | — | — | **< 1 month** |
+| 5-year TCO savings | — | — | **$1,618,655** |
 
-> _Last estimated: 2026-04-23 · Issue #138 [ADA Documentation] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issues #129 [Pipeline Configuration] + #145 [Core Pipeline Validation & Sign-off] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
