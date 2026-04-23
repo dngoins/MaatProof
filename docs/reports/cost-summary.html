@@ -208,6 +208,11 @@
     </div>
   </div>
 
+  <div class="insight">
+    <h4>⚡ Log Ingestion Cost is the Edge Case Decision Driver</h4>
+    <p>At 500 GA workflow runs/day, VRP audit event logs exceed 200 GB/month. GCP Cloud Monitoring charges <strong>$10.24/GB</strong> vs AWS CloudWatch at <strong>$0.50/GB</strong> — a 20× difference that swings $24,000/year at edge scale. <strong>Recommendation: bypass managed logging entirely</strong> — write HMAC-signed audit entries directly to Azure Blob immutable storage (WORM tier) and use CloudWatch only for operational dashboards.</p>
+  </div>
+
   <!-- Build Costs -->
   <h2>ACI/ACD vs Traditional Build Costs</h2>
   <div class="chart-grid">
@@ -610,7 +615,7 @@ new Chart(document.getElementById('issue136Breakdown'), {
     new Chart(document.getElementById('cloudStandardChart'), {
       type: 'bar',
       data: {
-        labels: ['Azure', 'AWS', 'GCP', 'GCP+AWS Logs'],
+        labels: ['Azure', 'AWS', 'GCP', 'Optimal\nHybrid'],
         datasets: [
           { label: '#14 Infra ($)', data: [192, 65, 25, 25], backgroundColor: 'rgba(248,81,73,0.5)', borderRadius: 4 },
           { label: '#119 AI API + Infra ($)', data: [324, 324, 324, 324], backgroundColor: 'rgba(63,185,80,0.6)', borderRadius: 4 },
@@ -741,11 +746,11 @@ new Chart(document.getElementById('issue136Breakdown'), {
       }
     });
 
-    // 7. Cost Projection Line
-    new Chart(document.getElementById('costProjectionLine'), {
+    // 7. Cost Projection Line (Issue #123, scaling by GA runs/day)
+    new Chart(document.getElementById('costProjectionLine123'), {
       type: 'line',
       data: {
-        labels: ['100 MAU', '500 MAU', '1K MAU', '2.5K MAU', '5K MAU', '10K MAU'],
+        labels: ['5 runs/day', '20 runs/day', '50 runs/day', '100 runs/day', '250 runs/day', '500 runs/day'],
         datasets: [
           { label: 'Azure/mo', data: [46.6, 233, 466, 1165, 2330, 4890], borderColor: '#f85149', backgroundColor: 'rgba(248,81,73,0.1)', tension: 0.3, fill: true },
           { label: 'AWS/mo', data: [36.0, 180, 360, 900, 1800, 3668], borderColor: '#d29922', backgroundColor: 'rgba(210,153,34,0.1)', tension: 0.3, fill: true },

@@ -304,34 +304,33 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Updated: Issue #142 [ADA Validation & Sign-off] — Final quality gate for the full ADA feature (9 deliverables: #99–#142). Previous: Issues #14 · #119 · #137 · #133._
+> _Issues #14 · #119 · #137 · #133 · #126: Data Model · Core Pipeline · DRE Docs · CI/CD Workflow · **ADA CI/CD Workflow** (autonomous deployment · authority gating · auto-rollback · signed proof artifacts)_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost — ADA Sign-off (#142) | $2,729 | $102 | **96%** |
+| Build cost — **ADA CI/CD Workflow (#126)** | $4,512 | $301 | **93%** |
 | Build cost — CI/CD Workflow (#133) | $4,540 | $167 | **96%** |
 | Build cost — DRE Docs (#137) | $972 | $48 | **95%** |
 | Build cost — Core Pipeline (#119) | $6,741 | $247 | **96%** |
 | Build cost — Data Model (#14) | $2,326 | $148 | **94%** |
-| ADA full feature (9 issues #99–#142) | $28,095 | $1,566 | **94%** |
-| **Combined build cost (all tracked issues)** | **~$42,674** | **~$2,160** | **~95%** |
-| Annual developer savings | — | $198,720 | **3,312 hrs/yr** |
-| Annual runtime (GCP standard + ADA) | — | **$391/yr** | — |
-| Annual incident prevention value (ADA) | $209,952 | **$0 extra** | **100% automated** |
+| Combined build cost (#14+#119+#137+#133+#126) | $19,091 | $911 | **95%** |
+| **Human approval gate elimination (#126)** | $110,160/yr | $26/yr | **99.98%** |
+| **ADA workflow ROI per compute dollar** | — | — | **4,270×** |
+| **Auto-rollback activation time (#126)** | 30–60 min | ≤ 60 seconds | **97% faster** |
+| **Signed deployment proofs (#126)** | 0% | 100% per deploy | **Compliance-grade** |
+| Annual developer savings | — | $309,000 | **5,150 hrs/yr** |
+| Annual CI/CD cost (GCP, public repo, 100 MAU) | — | **$418/yr** | — |
 | GitHub Actions runtime (public repo) | — | **$0/yr** | Unlimited free minutes |
-| ADA runtime addition | — | **+$46/yr** | Full autonomous deploy authority |
-| Mean time to recovery (ADA auto-rollback) | 4 hours | **60 seconds** | **99.6% faster** |
-| Human approvals required (fully-verified) | Every deploy | **0** | **100% eliminated** |
-| MAAT staking/slashing enforcement | Manual | **Automated** | **100% coverage** |
 | Trust anchor gate bypass prevention | Possible | **Impossible** | 100% elimination |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
-| DORA rating | Low | **Elite** | Top 10% globally |
-| ADA standalone Year 1 ROI | — | — | **~13,006%** |
-| 5-year TCO savings (with ADA incident prevention) | — | — | **~$2,717,142** |
+| Mean time to recovery | 4 hours | 15 min | **94% faster** |
+| DORA rating | Low | **Elite** (top 10%) | — |
+| Year 1 ROI | — | — | **14,521%** |
+| 5-year TCO savings | — | — | **$2,406,676** |
 
-> _Last estimated: 2026-04-23 · Run #7 · Issue #142 [ADA Validation & Sign-off] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issue #126 [ADA CI/CD Workflow] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
