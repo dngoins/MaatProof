@@ -4,7 +4,9 @@
      EDGE-119, EDGE-124, EDGE-126, EDGE-127, EDGE-129, EDGE-132, EDGE-135,
      EDGE-137, EDGE-139, EDGE-140, EDGE-142, EDGE-144, EDGE-146, EDGE-149,
      EDGE-151, EDGE-153, EDGE-154, EDGE-155, EDGE-160, EDGE-162, EDGE-163,
-     EDGE-165, EDGE-167, EDGE-168, EDGE-172, EDGE-174, EDGE-175 -->
+     EDGE-165, EDGE-167, EDGE-168, EDGE-172, EDGE-174, EDGE-175,
+     EDGE-139-004, EDGE-139-012, EDGE-139-014, EDGE-139-018, EDGE-139-033,
+     EDGE-139-043, EDGE-139-048, EDGE-139-057, EDGE-139-058, EDGE-139-061 -->
 
 ## Overview
 
@@ -45,6 +47,28 @@ A `ReasoningStep` captures one logical step in an agent's reasoning chain.
 > truncated to 4,096 characters and a `CONTEXT_TRUNCATED` flag is set in step
 > metadata.
 
+### step_id Assignment and Validation
+
+<!-- Addresses EDGE-139-018, EDGE-139-057, EDGE-139-058 -->
+
+`step_id` values MUST be non-negative integers (`≥ 0`). When constructed via
+`ReasoningChain.step()`, they are assigned automatically as 0, 1, 2, … (monotonically
+increasing from 0). When `ReasoningStep` objects are constructed **manually** and passed
+directly to `ProofBuilder.build()`:
+
+- The `step_id` values are NOT validated for ordering or uniqueness at the `ReasoningStep`
+  level; validation happens at `ProofBuilder.build()` (see §2 — Proof Size Limits).
+- Negative `step_id` values will result in a proof that cannot be replayed in canonical
+  order; callers MUST use non-negative, monotonically increasing IDs.
+- Out-of-order `step_id` values do not affect hash correctness (each hash covers content,
+  not ordering) but SHOULD be avoided for auditability. Validators may flag out-of-order
+  step_ids as suspicious.
+
+> **EDGE-139-018 / EDGE-139-057 / EDGE-139-058**: Negative and out-of-order step_ids
+> are not rejected by the Python layer. They produce a valid cryptographic chain but
+> violate the convention. The `ReasoningChain` builder enforces sequential assignment;
+> direct `ProofBuilder.build()` callers are responsible for correctness.
+
 ### Step Hashing
 
 Each step's `step_hash` is the SHA-256 of the canonical JSON of:
@@ -67,6 +91,14 @@ No NFC normalization is applied at this layer (the AVM DRE layer normalizes).
 
 - `True` — all three checks passed (chain integrity + root hash + HMAC signature).
 - `False` — any check failed; the reason is NOT disclosed to prevent oracle attacks.
+- `False` — if `proof` is `None` or has an empty `steps` list.
+
+<!-- Addresses EDGE-139-012 -->
+
+> **EDGE-139-012 — None proof**: `ProofVerifier.verify(None)` MUST return `False`
+> (not raise `AttributeError`). Callers that pass `None` receive a safe negative result.
+> Implementations MUST guard with `if proof is None: return False` before any attribute
+> access.
 
 The `bool` return value IS the "structured verification result" referred to in
 `CONSTITUTION.md §4`. It is intentionally minimal so that callers cannot distinguish
@@ -150,6 +182,17 @@ A proof with missing or mismatched `environment` metadata is rejected with
 
 `ProofBuilder.__init__()` raises `ValueError` if `len(secret_key) < 32`.
 
+`ProofBuilder.__init__()` raises `TypeError` if `secret_key` is not of type `bytes`.
+The error message MUST be: `"secret_key must be bytes, got {type(secret_key).__name__}"`.
+
+<!-- Addresses EDGE-139-004 -->
+
+> **EDGE-139-004 — Non-bytes key type**: Passing a `str` or `int` as `secret_key` raises
+> `TypeError` immediately at construction time — not a cryptographic failure at signing time.
+> This prevents silent encoding errors where `str.encode()` is accidentally omitted.
+
+`ProofVerifier.__init__()` applies the same `TypeError` check.
+
 > **Rationale**: HMAC-SHA256 has a 256-bit security level. Keys shorter than 32
 > bytes reduce security below that bound. This matches the key entropy requirement
 > in `docs/06-security-model.md §Multi-Cloud Key Management`.
@@ -173,6 +216,28 @@ Key rotation events MUST be logged as `HMAC_KEY_ROTATED` in the audit trail.
 ---
 
 ## §4 — DeterministicLayer Invariants
+
+### SKIPPED Gate Status and `all_passed()`
+
+<!-- Addresses EDGE-139-033 -->
+
+`DeterministicLayer.all_passed(results)` returns `True` if and only if every
+`GateResult` in `results` has `status == GateStatus.PASSED`. The `SKIPPED` status
+is NOT equivalent to `PASSED`:
+
+| status | counts as passed? |
+|---|---|
+| `PASSED` | ✅ Yes |
+| `FAILED` | ❌ No |
+| `SKIPPED` | ❌ No |
+
+A gate with `status=SKIPPED` causes `all_passed()` to return `False`. If a caller
+legitimately needs to skip a gate for a given pipeline run, the gate MUST either
+not be registered for that run or MUST return `PASSED` with a `details` string
+explaining why it was effectively skipped (e.g., `"gate not applicable — README-only change"`).
+
+> **EDGE-139-033**: Tests MUST verify that a layer with a SKIPPED gate returns
+> `all_passed=False` and the gate name appears in `failed_gates()`.
 
 ### Minimum Gate Requirement
 
@@ -499,6 +564,46 @@ When the in-memory limit is reached, entries are flushed to a configurable sink
 `AUDIT_SINK_UNCONFIGURED` warning is emitted and entries are evicted without
 persistence (unsafe for production).
 
+### In-Memory AuditEntry Tamper Detection
+
+<!-- Addresses EDGE-139-043, EDGE-139-061 -->
+
+The Python in-memory `AuditEntry` objects (stored in `OrchestratingAgent._audit_log`)
+are NOT tamper-protected at the Python object level. An attacker with access to the
+Python process memory can mutate fields directly.
+
+The HMAC-signed tamper detection described in CONSTITUTION.md §7 and §7 of this spec
+(AuditEntry Signing) protects against **external storage tampering** (disk, database).
+It does NOT protect against in-process mutation.
+
+Full tamper protection requires:
+1. The HMAC signature stored alongside each entry (see §7 — AuditEntry Signing).
+2. Verification of the HMAC chain when entries are read back from persistent storage.
+3. The in-memory list serves as a fast read-cache; the authoritative record is the
+   signed, persisted storage (SQLite with `entry_hmac` chain per `specs/audit-logging-spec.md §2`).
+
+**Required fields for `AuditEntry` in the Python layer:**
+
+<!-- Addresses EDGE-139-061 -->
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `entry_id` | `str` (UUID4) | ✅ Yes | Unique identifier |
+| `event` | `str` | ✅ Yes | Pipeline event name |
+| `timestamp` | `float` | ✅ Yes | POSIX timestamp |
+| `result` | `str` | ✅ Yes | Handler result string |
+| `metadata` | `Dict[str, Any]` | ✅ Yes | Forwarded kwargs (default: `{}`) |
+| `signature` | `str` | ✅ Yes (Phase 2) | HMAC-SHA256 hex signature (see §7) |
+
+> **Phase 1 note**: The current Python implementation does not yet include the
+> `signature` field on `AuditEntry`. This is tracked as a **critical implementation
+> gap** — see GitHub issue filed for EDGE-139-041. The field MUST be added before
+> production deployment to satisfy CONSTITUTION.md §7.
+
+> **EDGE-139-043**: Tests that check AuditEntry tamper detection MUST use the
+> SQLite layer (`audit-logging-spec.md §2`), not the in-memory Python list, for
+> meaningful tamper detection assertions.
+
 ---
 
 ## §8 — PipelineConfig Validation
@@ -517,6 +622,42 @@ persistence (unsafe for production).
 
 `PipelineConfig.__post_init__()` raises `ValueError` with a descriptive message for
 any constraint violation.
+
+---
+
+## §8b — ReasoningChain Post-Seal Behavior
+
+<!-- Addresses EDGE-139-014 -->
+
+`ReasoningChain` is **intentionally NOT immutable** after calling `.seal()`. This
+is a deliberate design choice to support the fix-and-retry pattern:
+
+```python
+chain = ReasoningChain(builder=builder)
+chain.step(context="First attempt", reasoning="Applied fix A.", conclusion="Retry.")
+proof1 = chain.seal()  # Proof of attempt 1
+
+# After seal(), more steps can be added and seal() called again
+chain.step(context="Second attempt", reasoning="Fix A failed; trying B.", conclusion="Retry.")
+proof2 = chain.seal()  # Proof of attempt 2 (includes all 3 steps)
+```
+
+**Behavior after `.seal()`:**
+
+| Question | Answer |
+|---|---|
+| Can `.step()` be called after `.seal()`? | ✅ Yes — `_steps` is not frozen |
+| Does a second `.seal()` include all accumulated steps? | ✅ Yes — `_steps` is cumulative |
+| Does calling `.seal()` twice produce the same proof? | ✅ Yes — if no new steps were added |
+| Is `_steps` cleared after `.seal()`? | ❌ No — the list is NOT cleared |
+| Can a caller obtain the pre-seal proof independently? | ✅ Yes — the returned `ReasoningProof` is an independent object |
+
+> **Immutability requirement from AC**: The acceptance criterion for "immutability
+> after build" refers to the **returned `ReasoningProof` object** being immutable
+> (callers cannot retroactively change the proof's content), NOT to the
+> `ReasoningChain` being locked. `ReasoningProof` fields are dataclass fields
+> without enforced immutability — tests MUST verify that tampering with a returned
+> proof does not alter other proofs produced by the same chain.
 
 ---
 
@@ -547,9 +688,36 @@ The following scenarios require architectural changes and are tracked separately
 | EDGE-148 | To be filed | ACDPipeline integration with 7-condition ADA authorization check |
 | EDGE-159, EDGE-164 | To be filed | Human approval on-chain transaction reference in Python layer |
 | EDGE-173 | To be filed | Scale testing: 10,000 concurrent pipeline events |
+| EDGE-139-041 | Filed (issue #140) | `AuditEntry` missing HMAC `signature` field — CONSTITUTION §7 violation |
+| EDGE-139-029 | Filed (issue #141) | `DeterministicLayer.run_all()` does not raise `GateFailureError` on empty gate list |
+| EDGE-139-001 | Filed (issue #142) | `ProofBuilder.__init__()` does not enforce 32-byte minimum key length |
+| EDGE-139-031 | Filed (issue #143) | `DeterministicLayer.register()` does not enforce gate name uniqueness |
+| EDGE-139-064 | Filed (issue #144) | `PipelineConfig` missing `__post_init__` field validation |
+| EDGE-139-035 | Filed (issue #145) | `ACDPipeline.request_deployment()` should raise `HumanApprovalRequiredError` for production |
+
+### Metadata Key Safety in Python Layer
+
+<!-- Addresses EDGE-139-048 -->
+
+The `metadata` dictionary passed to `ProofBuilder.build()`, `AuditEntry`, and
+`ReasoningStep` is **NOT sanitized for injection payloads** at the Python layer.
+Keys and values are arbitrary Python strings/objects that will be JSON-serialized.
+
+- SQL injection is prevented because the Python layer does NOT execute SQL directly;
+  all SQL is in the `specs/audit-logging-spec.md` SQLite layer which uses parameterized queries.
+- Prompt injection via metadata values is mitigated by the `proof-chain-spec.md §5`
+  injection pattern detection in `AgentGate.run()`.
+- Metadata keys MUST NOT contain null bytes or control characters (rejected by
+  `json.dumps` if non-serializable, or silently passed as valid JSON strings otherwise).
+
+> **EDGE-139-048**: Tests for metadata injection MUST focus on the SQLite layer
+> (parameterized queries prevent SQL injection) and the AgentGate layer (injection
+> pattern detection). The `ProofBuilder` itself is not the injection boundary.
 
 <!-- Addresses EDGE-102, EDGE-106, EDGE-112, EDGE-113, EDGE-115, EDGE-117,
      EDGE-119, EDGE-124, EDGE-126, EDGE-127, EDGE-129, EDGE-132, EDGE-135,
      EDGE-137, EDGE-139, EDGE-140, EDGE-142, EDGE-144, EDGE-146, EDGE-149,
      EDGE-151, EDGE-153, EDGE-154, EDGE-155, EDGE-160, EDGE-162, EDGE-163,
-     EDGE-165, EDGE-167, EDGE-168, EDGE-172, EDGE-174, EDGE-175 -->
+     EDGE-165, EDGE-167, EDGE-168, EDGE-172, EDGE-174, EDGE-175,
+     EDGE-139-004, EDGE-139-012, EDGE-139-014, EDGE-139-018, EDGE-139-033,
+     EDGE-139-043, EDGE-139-048, EDGE-139-057, EDGE-139-058, EDGE-139-061 -->
