@@ -694,6 +694,12 @@ The following scenarios require architectural changes and are tracked separately
 | EDGE-139-031 | Filed (issue #143) | `DeterministicLayer.register()` does not enforce gate name uniqueness |
 | EDGE-139-064 | Filed (issue #144) | `PipelineConfig` missing `__post_init__` field validation |
 | EDGE-139-035 | Filed (issue #145) | `ACDPipeline.request_deployment()` should raise `HumanApprovalRequiredError` for production |
+| EDGE-IT-009 | #278 | `AuditEntry` missing HMAC-SHA256 `signature` field (integration test context) |
+| EDGE-IT-027 | #282 | Empty `DeterministicLayer` must raise `GateFailureError` (vacuous pass bug) |
+| EDGE-IT-042 | #287 | `HumanApprovalRequiredError` missing `proof_id` attribute |
+| EDGE-IT-055 | #296 | Missing built-in handlers for `ALL_TESTS_PASS`, `STAGING_HEALTHY`, `HUMAN_APPROVED`, `HUMAN_REJECTED` |
+
+<!-- Addresses EDGE-IT-009, EDGE-IT-027, EDGE-IT-042, EDGE-IT-055 — see specs/integration-test-spec.md §10 -->
 
 ### Metadata Key Safety in Python Layer
 
