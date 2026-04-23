@@ -46,6 +46,52 @@ MaatProof operates as a fully autonomous ACI/ACD system. Agents propose, DRE ver
 
 ### Full Protocol Stack
 
+### Full Protocol Stack
+
+```mermaid
+flowchart LR
+    Agent["🤖 Agent\n(Node.js)"]
+    Contract["📜 Deployment\nContract\n(Solidity)"]
+    AVM["⚙️ AVM\n(Rust/WASM)"]
+    DRE["🧠 DRE\n(Rust)"]
+    VRP["🔍 VRP\n(Rust)"]
+    ADA["🔐 ADA\n(Rust)"]
+    PoD["🗳 PoD Consensus\n(Rust/gRPC)"]
+    Chain["⛓ Chain\n(Rust)"]
+    Prod["🚀 Production"]
+
+    Agent --> Contract --> AVM --> DRE --> VRP --> ADA --> PoD --> Chain --> Prod
+```
+
+### Two-Layer Consensus
+
+```mermaid
+flowchart TD
+    A["Agent submits PromptBundle + EvidenceBundle"] --> B
+
+    subgraph L1["Layer 1 — DRE Model Committee"]
+        B["N-of-M LLM instances (parallel)"]
+        B --> C["Normalize → DecisionTuple"]
+        C --> D{"≥ M quorum?"}
+        D -->|yes| E["CommitteeCertificate"]
+        D -->|no| F["Discard — agent retries"]
+    end
+
+    E --> G
+
+    subgraph L2["Layer 2 — Validator Committee"]
+        G["Validators receive ValidatorInputPackage"]
+        G --> H["Replay via pinned WASM checkers"]
+        H --> I["Verify VRP Merkle root + ADA conditions"]
+        I --> J{"2/3 supermajority?"}
+        J -->|yes| K["FINALIZED"]
+        J -->|dispute| L["Dispute path → governance"]
+        J -->|reject| M["REJECTED"]
+    end
+```
+
+### Orchestrating Agent + Deterministic Layers
+
 ```mermaid
 flowchart LR
     Agent["🤖 Agent\n(Node.js)"]
