@@ -62,13 +62,17 @@ class VerificationLevel(str, Enum):
 
 ### Verification Level ↔ Environment Mapping
 
-<!-- Addresses EDGE-019 -->
+<!-- Addresses EDGE-019, EDGE-036, EDGE-037, EDGE-038 -->
 
-| Level | Environment | Min Validators | Signature Algorithm | On-Chain? |
-|---|---|---|---|---|
-| `SELF_VERIFIED` | development | 0 (agent only) | HMAC-SHA256 | No |
-| `PEER_VERIFIED` | staging | ≥ 1 | HMAC-SHA256 | No |
-| `FULLY_VERIFIED` | production | ≥ 2/3 quorum | ECDSA P-256 | Yes |
+| Level | Environment | Min Validators | Quorum Requirement | Signature Algorithm | On-Chain? | Human-in-loop |
+|---|---|---|---|---|---|---|
+| `SELF_VERIFIED` | development | 0 (agent only) | Agent self-sign | HMAC-SHA256 | No | ❌ Never required |
+| `PEER_VERIFIED` | staging | ≥ 1 peer | At least 1 peer attestation (stake ≥ 1 wei) | HMAC-SHA256 | No | ⚙️ Optional — enabled by `requireHumanApproval` flag in Deployment Contract |
+| `FULLY_VERIFIED` | production | ≥ 2/3 quorum | 2/3 stake-weighted supermajority | ECDSA P-256 | Yes | ⚙️ Optional — ADA is the protocol default; human approval is required when Deployment Contract declares it (SOX, HIPAA, PCI-DSS, CRITICAL tier workloads) |
+
+> **Human-in-loop policy**: The Autonomous Deployment Authority (ADA) is the **protocol default** for all production (`FULLY_VERIFIED`) deployments — no human approval is required unless the Deployment Contract explicitly sets `requireHumanApproval = true`. When required, the `human_approval_ref` field in the `DeploymentTrace` must reference an on-chain approval transaction. See `docs/07-regulatory-compliance.md` and `specs/avm-spec.md` §Policy Evaluation.
+
+> **Non-standard environments** (e.g., `"test"`, `"preview"`, `"canary"`): These environments are treated as `SELF_VERIFIED` unless the operator's Deployment Contract maps them to a higher level. Operators SHOULD configure `verification_level` explicitly in the VRP config (`specs/vrp-config-spec.md`). The AVM will reject any `DeploymentTrace` whose `deploy_environment` is not listed in the policy's known environments. <!-- Addresses EDGE-042 -->
 
 **Invariant**: A `FULLY_VERIFIED` chain submitted to the AVM with `deploy_environment = "production"` MUST include an `AttestationRecord` chain. The AVM rejects production traces with only `SELF_VERIFIED` or `PEER_VERIFIED` attestation. See `specs/avm-spec.md` §Policy Evaluation.
 
@@ -122,6 +126,164 @@ class InferenceRule(str, Enum):
 | `threshold` | 1 | unlimited | premises include numeric value and threshold; conclusion = comparison result |
 
 **Validation**: If `len(premises) < min_premises_for_rule`, a `VRPValidationError` is raised at `VerifiableStep` construction time. See §Error Handling.
+
+---
+
+## Inference Rule Python Usage Examples
+
+<!-- Addresses EDGE-031, EDGE-032, EDGE-072, EDGE-073, EDGE-074, EDGE-075 -->
+
+Each rule has a formal definition and a self-contained Python example. All examples assume the imports below:
+
+```python
+from maatproof.vrp import InferenceRule, VerifiableStep
+```
+
+### 1. `modus_ponens` — from P, P→Q conclude Q
+
+**Formal definition**: Given a premise P and a conditional premise "P → Q", conclude Q.  
+The agent asserts that an observed fact (P) triggers a known implication, yielding the conclusion (Q).
+
+```python
+# EDGE-031 example: test passes + "pass → deploy safe" → deployment is safe
+step = VerifiableStep(
+    step_id=0,
+    premises=[
+        "All integration tests passed (P)",
+        "If all tests pass, the deployment is safe to proceed (P → Q)",
+    ],
+    inference_rule=InferenceRule.MODUS_PONENS,
+    conclusion="The deployment is safe to proceed (Q).",
+    confidence=0.97,
+    evidence=["sha256:a3f8b2c1d4e5f6a7"],
+)
+```
+
+### 2. `conjunction` — from P, Q conclude P∧Q
+
+**Formal definition**: Given two or more independent premises, each of which holds, conclude their joint truth.  
+Used to combine multiple policy gates into a single compound approval.
+
+```python
+# Combining passing test coverage AND zero critical CVEs into one step
+step = VerifiableStep(
+    step_id=1,
+    premises=[
+        "Test coverage = 87% (≥ 80% policy threshold) — PASS",
+        "Security scan: 0 critical CVEs found — PASS",
+        "Deployment window: Tuesday 10:00 UTC (not a Friday) — PASS",
+    ],
+    inference_rule=InferenceRule.CONJUNCTION,
+    conclusion="All three deployment gates passed (coverage ∧ security ∧ window).",
+    confidence=0.99,
+    evidence=[
+        "ipfs://QmTestReport",
+        "ipfs://QmScanReport",
+    ],
+)
+```
+
+### 3. `disjunctive_syllogism` — from P∨Q, ¬P conclude Q
+
+**Formal definition**: Given a disjunction "P or Q" and the negation of P, conclude Q.  
+Used when one of two possible deployment paths is ruled out, leaving the other.
+
+```python
+# EDGE-074: Either rollback is available OR deployment must be blocked.
+# Rollback artifact IS present (¬blocked), so deployment may proceed.
+step = VerifiableStep(
+    step_id=2,
+    premises=[
+        "Deployment must be blocked OR a rollback artifact must be available (P ∨ Q)",
+        "Deployment is NOT blocked — all gates passed (¬P)",
+    ],
+    inference_rule=InferenceRule.DISJUNCTIVE_SYLLOGISM,
+    conclusion="A rollback artifact is available and deployment may proceed (Q).",
+    confidence=0.95,
+    evidence=["sha256:rollback-manifest-hash"],
+)
+```
+
+### 4. `induction` — base case + inductive step ⊢ universal claim
+
+**Formal definition**: Given a base case P(0) and an inductive step "P(n) → P(n+1)", conclude ∀n P(n).  
+Used to prove that a property holds across all retry iterations or all environment stages.
+
+```python
+# EDGE-075: Prove that 3 successive staging health checks all passed
+step = VerifiableStep(
+    step_id=3,
+    premises=[
+        "Base case: Health check at t=0 passed (P(0))",
+        "Inductive step: Health check at t=30s passed, given t=0 passed (P(0)→P(1))",
+        "Inductive step: Health check at t=60s passed, given t=30s passed (P(1)→P(2))",
+    ],
+    inference_rule=InferenceRule.INDUCTION,
+    conclusion="All 3 successive health checks passed — staging environment is stable.",
+    confidence=0.96,
+    evidence=["ipfs://QmHealthCheckLog"],
+)
+```
+
+### 5. `abduction` — from observation Q and rule P→Q, conclude best explanation P
+
+**Formal definition**: Given an observation Q and a known implication "P → Q", conclude P as the most likely explanation.  
+This is defeasible inference (best-explanation reasoning), not deductive certainty — validators weight `confidence` accordingly.
+
+```python
+# EDGE-073: Observe error spike → infer recent deployment as the cause
+step = VerifiableStep(
+    step_id=4,
+    premises=[
+        "Error rate spiked 5× immediately after the last deployment (Q — observation)",
+        "If a bad deployment occurred, an error spike would follow (P → Q — known rule)",
+    ],
+    inference_rule=InferenceRule.ABDUCTION,
+    conclusion="The most likely explanation is that the last deployment introduced a regression (P).",
+    confidence=0.72,   # Abductive confidence is lower — defeasible reasoning
+    evidence=["ipfs://QmErrorMetrics", "sha256:deploy-artifact-hash"],
+)
+```
+
+### 6. `data_lookup` — conclusion derived from direct data retrieval
+
+**Formal definition**: The conclusion is a value retrieved from one or more authoritative data sources listed as premises.  
+No logical deduction is involved — this is a fact-retrieval step. The validator re-fetches the sources to confirm the retrieved value.
+
+```python
+# Retrieve test coverage percentage from CI output artifact
+step = VerifiableStep(
+    step_id=5,
+    premises=[
+        "CI test report at ipfs://QmCIReport (source artifact)",
+        "Field: summary.coverage_percent",
+    ],
+    inference_rule=InferenceRule.DATA_LOOKUP,
+    conclusion="Test coverage = 87.3%",
+    confidence=1.0,   # Data lookup is deterministic — full confidence
+    evidence=["ipfs://QmCIReport"],
+)
+```
+
+### 7. `threshold` — numeric value meets minimum/maximum threshold
+
+**Formal definition**: Given a numeric value and a threshold, the conclusion asserts the comparison result.  
+This is the most common rule for policy gate evaluation (coverage ≥ N%, risk score ≤ M, CVE count = 0).
+
+```python
+# EDGE-072: Test coverage threshold gate
+step = VerifiableStep(
+    step_id=6,
+    premises=[
+        "Test coverage = 87.3% (retrieved from CI report)",
+        "Policy threshold: minimum coverage = 80%",
+    ],
+    inference_rule=InferenceRule.THRESHOLD,
+    conclusion="87.3% ≥ 80% — test coverage gate PASSED.",
+    confidence=1.0,   # Deterministic numeric comparison
+    evidence=["ipfs://QmCIReport", "sha256:policy-contract-hash"],
+)
+```
 
 ---
 
@@ -1463,9 +1625,9 @@ An attacker may attempt to replay a valid `ProofChain` finalized for `staging` a
 
 ## Signature Algorithm Confusion Attack Prevention
 
-<!-- Addresses EDGE-051 -->
+<!-- Addresses EDGE-051, EDGE-057 -->
 
-An attacker may submit an HMAC-signed `AttestationRecord` for a `FULLY_VERIFIED` chain (where ECDSA is required), or vice versa.
+An attacker may submit an HMAC-signed `AttestationRecord` for a `FULLY_VERIFIED` chain (where ECDSA is required), or vice versa. A subtler variant uses ECDSA but on the wrong elliptic curve (e.g., secp256k1 instead of P-256).
 
 **Prevention**:
 - The `verification_level` field in `AttestationRecord` determines which verification path is used:
@@ -1474,6 +1636,7 @@ An attacker may submit an HMAC-signed `AttestationRecord` for a `FULLY_VERIFIED`
 - The AVM enforces this via the VRP integration check table (§Integration with AVM DeploymentTrace).
 - An HMAC signature is 64 hex chars; an ECDSA P-256 DER signature is 70–144 hex chars. If the signature length doesn't match the expected algorithm, the verifier returns `False` immediately (no exception).
 - Validators SHOULD log a security event if `verification_level = FULLY_VERIFIED` but the signature length matches HMAC (possible algorithm confusion attack attempt).
+- **Wrong-curve attack prevention (EDGE-057)**: `verify_ecdsa()` uses `cryptography.hazmat.primitives.asymmetric.ec.ECDSA(hashes.SHA256())` against a P-256 (`SECP256R1`) public key. The `cryptography` library raises `ValueError` if the key curve does not match — callers MUST load public keys with `ec.EllipticCurvePublicKey` typed as `ec.SECP256R1()`. A secp256k1 key passed to a P-256 verifier will be rejected at key loading time. Operators MUST store public keys with explicit OID in PEM format to prevent curve confusion at deserialization.
 
 ---
 

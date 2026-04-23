@@ -238,6 +238,118 @@ graph LR
 > _Last estimated: 2026-04-23 · Issue #31 [VRP Data Model / Schema] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
+## Verifiable Reasoning Protocol (VRP)
+
+<!-- Addresses EDGE-059, EDGE-068, EDGE-069, EDGE-070 -->
+
+The **Verifiable Reasoning Protocol (VRP)** is the formal-logic layer that structures every agent reasoning step as a typed, machine-checkable record. Unlike a plain hash-chain (which only proves a trace was not modified), VRP proves the reasoning is *logically sound* — that conclusions follow from premises via a named inference rule, confirmed by validators.
+
+### VRP Pipeline
+
+```mermaid
+flowchart LR
+    Agent["🤖 Agent\nCreates VerifiableStep\n(premises → rule → conclusion)"]
+    LV["🔍 LogicVerifier\n(ProofChain.verify_integrity)\nValidates hash chain"]
+    VN["🗳 Validator Network\nReplay + quorum sign\nAttestationRecord"]
+    AR["📜 Attestation\nHash-chained records\non-chain (FULLY_VERIFIED)"]
+    Deploy["🚀 Deploy\nAVM accepts chain\n(verification_level matches env)"]
+
+    Agent --> LV --> VN --> AR --> Deploy
+```
+
+### Quick-Start: Create and Verify a VerifiableStep
+
+```python
+import uuid, time
+from maatproof.vrp import (
+    InferenceRule, VerifiableStep, VerificationLevel,
+    ProofChain, AttestationRecord, make_step_range_hash,
+)
+
+# 1. Create a VerifiableStep — the core VRP unit
+step = VerifiableStep(
+    step_id=0,
+    premises=[
+        "Test coverage = 87%",
+        "Policy requires coverage ≥ 80%",
+    ],
+    inference_rule=InferenceRule.THRESHOLD,
+    conclusion="Test coverage requirement is satisfied.",
+    confidence=0.98,
+    evidence=["sha256:a3f8b2c1d4e5f6a7b8c9d0e1f2a3b4c5"],
+)
+
+# 2. Build a ProofChain and add steps
+chain = ProofChain(
+    chain_id=str(uuid.uuid4()),
+    agent_id="did:maat:agent:abc123def456789a",
+    verification_level=VerificationLevel.SELF_VERIFIED,   # dev environment
+)
+chain.add_step(step)
+
+# 3. Finalize: computes root_hash and cumulative_hash
+root_hash = chain.finalize()
+print(f"Root hash: {root_hash}")
+
+# 4. Attest (SELF_VERIFIED uses HMAC-SHA256)
+secret_key = b"shared-secret-from-kms"
+step_range_hash = make_step_range_hash(root_hash, 0, 0)
+sig = AttestationRecord.sign_hmac(
+    chain_id=chain.chain_id,
+    step_range_hash=step_range_hash,
+    previous_hash="",
+    stake_amount="0",
+    secret_key=secret_key,
+)
+rec = AttestationRecord(
+    record_id=str(uuid.uuid4()),
+    validator_id="did:maat:agent:abc123def456789a",
+    timestamp=time.time(),
+    signature=sig,
+    previous_hash="",
+    stake_amount="0",
+    step_range_hash=step_range_hash,
+    chain_id=chain.chain_id,
+    verification_level=VerificationLevel.SELF_VERIFIED,
+)
+chain.add_attestation(rec)
+
+# 5. Verify integrity and signature
+assert chain.verify_integrity(), "Hash chain is broken!"
+assert rec.verify_hmac(secret_key), "Attestation signature is invalid!"
+assert chain.is_quorum_reached(total_stake=0), "Quorum not reached!"
+
+print(f"✅ VerifiableStep verified — chain ID: {chain.chain_id}")
+```
+
+### The 7 Inference Rules
+
+| Rule | Formal Form | Use Case |
+|------|------------|----------|
+| `modus_ponens` | P, P→Q ⊢ Q | Test passes → deployment is safe |
+| `conjunction` | P, Q ⊢ P∧Q | Combine multiple passing checks |
+| `disjunctive_syllogism` | P∨Q, ¬P ⊢ Q | One path fails, deduce the other |
+| `induction` | Base + inductive steps ⊢ ∀n P(n) | Prove all N retry attempts acceptable |
+| `abduction` | Q, P→Q ⊢ P (best explanation) | Infer root cause from observed symptom |
+| `data_lookup` | Sources ⊢ retrieved value | Fetch test coverage number from CI output |
+| `threshold` | value ≥ minimum ⊢ gate passes | coverage ≥ 80%, risk_score ≤ 700 |
+
+Full formal definitions, Python usage examples for each rule, and the complete data model are in [`specs/vrp-data-model-spec.md`](specs/vrp-data-model-spec.md).
+
+### Verification Levels
+
+| Level | Environment | Quorum | Human-in-loop |
+|-------|-------------|--------|---------------|
+| `SELF_VERIFIED` | development | Agent only (HMAC) | ❌ Never |
+| `PEER_VERIFIED` | staging | ≥ 1 peer validator | ⚙️ Optional (policy gate) |
+| `FULLY_VERIFIED` | production | 2/3 stake-weighted | ⚙️ Optional (ADA default; required for SOX/HIPAA) |
+
+> ADA (Autonomous Deployment Authority) is the protocol default for production. Human approval is declared in the Deployment Contract and is required for regulated workloads (SOX, HIPAA, PCI-DSS).
+
+For the full VRP specification see [`specs/vrp-data-model-spec.md`](specs/vrp-data-model-spec.md) and [`specs/vrp-spec.md`](specs/vrp-spec.md).
+
+---
+
 ## Getting Started
 
 ```bash
@@ -251,19 +363,34 @@ pip install -e ".[dev]"
 # Run tests
 python -m pytest tests/ -v
 
-# Build a reasoning proof
+# Build a reasoning proof (legacy ReasoningProof API)
 python -c "
 from maatproof.proof import ProofBuilder, ProofVerifier, ReasoningStep
 
 builder = ProofBuilder(secret_key=b'my-secret', model_id='gpt-v1')
 proof = builder.build(steps=[
-    ReasoningStep(step_id=0, context='PR #42 failing', 
+    ReasoningStep(step_id=0, context='PR #42 failing',
                   reasoning='Mock return value changed',
                   conclusion='Update mock to fix', timestamp=1700000000.0)
 ])
 print(f'Proof ID: {proof.proof_id}')
 print(f'Root hash: {proof.root_hash}')
 print(f'Verified: {ProofVerifier(b\"my-secret\").verify(proof)}')
+"
+
+# Build a VRP VerifiableStep (see VRP section above for full example)
+python -c "
+from maatproof.vrp import VerifiableStep, InferenceRule
+step = VerifiableStep(
+    step_id=0,
+    premises=['Test coverage = 87%', 'Policy requires coverage >= 80%'],
+    inference_rule=InferenceRule.THRESHOLD,
+    conclusion='Test coverage requirement is satisfied.',
+    confidence=0.98,
+    evidence=[],
+)
+print(f'Step hash will be set by ProofChain: {step.step_hash!r}')
+print(f'Inference rule: {step.inference_rule.value}')
 "
 ```
 
