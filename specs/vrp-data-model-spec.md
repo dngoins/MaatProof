@@ -211,6 +211,7 @@ class VerifiableStep:
                         f"premises[{i}] must be a non-empty string ≤4096 chars"
                     )
             # per-rule minimum premises validation
+            # <!-- Addresses EDGE-VRP-008–012 -->
             _MIN_PREMISES = {
                 InferenceRule.MODUS_PONENS: 2,
                 InferenceRule.CONJUNCTION: 2,
@@ -220,12 +221,30 @@ class VerifiableStep:
                 InferenceRule.DATA_LOOKUP: 1,
                 InferenceRule.THRESHOLD: 1,
             }
+            # per-rule MAXIMUM premises validation
+            # DISJUNCTIVE_SYLLOGISM is the only rule with a maximum (exactly 2 premises).
+            # Form: premises[0]="P ∨ Q", premises[1]="¬P", conclusion="Q"
+            # <!-- Addresses EDGE-VRP-010, EDGE-VRP-003 -->
+            _MAX_PREMISES = {
+                InferenceRule.DISJUNCTIVE_SYLLOGISM: 2,
+            }
             if isinstance(self.inference_rule, InferenceRule):
                 min_p = _MIN_PREMISES[self.inference_rule]
                 if len(self.premises) < min_p:
-                    errors.append(
+                    rule_errors = [
                         f"inference_rule={self.inference_rule.value} requires "
                         f"≥{min_p} premises; got {len(self.premises)}"
+                    ]
+                    raise VerificationError(
+                        "VerifiableStep rule constraint violated: " + "; ".join(rule_errors)
+                    )
+                max_p = _MAX_PREMISES.get(self.inference_rule)
+                if max_p is not None and len(self.premises) > max_p:
+                    raise VerificationError(
+                        f"inference_rule={self.inference_rule.value} allows at most "
+                        f"{max_p} premises; got {len(self.premises)}. "
+                        f"DISJUNCTIVE_SYLLOGISM requires exactly 2 premises: "
+                        f"premises[0]='P ∨ Q', premises[1]='¬P'."
                     )
 
         # inference_rule
@@ -260,9 +279,35 @@ class VerifiableStep:
                         f"evidence[{i}] must be a non-empty string ≤2048 chars"
                     )
 
+        # DATA_LOOKUP requires at least one evidence reference
+        # <!-- Addresses EDGE-VRP-006, EDGE-VRP-013 -->
+        # This check mirrors the vrp-cicd-spec.md §LLM Hallucination check (VRP-VERIFY-015)
+        # at the schema layer, ensuring schema-level unit tests can catch this without
+        # instantiating a LogicVerifier.
+        if (
+            isinstance(self.inference_rule, InferenceRule)
+            and self.inference_rule == InferenceRule.DATA_LOOKUP
+            and isinstance(self.evidence, list)
+            and len(self.evidence) == 0
+        ):
+            raise VerificationError(
+                "inference_rule=data_lookup requires at least one evidence reference; "
+                "got empty evidence list. "
+                "DATA_LOOKUP steps MUST cite the data source (URL, IPFS CID, or content hash)."
+            )
+
         # version
         if not isinstance(self.version, int) or self.version < 1:
             errors.append(f"version must be a positive integer, got: {self.version!r}")
+
+        # metadata key length
+        # <!-- Addresses EDGE-VRP-080 — reconciles capacity table with validate() code -->
+        if isinstance(self.metadata, dict):
+            for k in self.metadata:
+                if not isinstance(k, str) or len(k) > 256:
+                    errors.append(
+                        f"metadata key too long or not a string (max 256 chars): {k!r}"
+                    )
 
         if errors:
             raise VRPValidationError(
@@ -606,7 +651,29 @@ class AttestationRecord:
 
         Returns False (not an exception) if the signature is invalid or malformed.
 
-        <!-- Addresses EDGE-049, EDGE-050, EDGE-054 -->
+        Algorithm confusion attack defense:
+        An HMAC-SHA256 signature is exactly 64 hex chars (32 bytes). An ECDSA P-256
+        DER signature is 70–144 hex chars (35–72 bytes). If a caller submits an
+        HMAC-signed record where ECDSA is expected, `bytes.fromhex(self.signature)`
+        will produce a 32-byte bytestring, and `public_key.verify()` will raise
+        `InvalidSignature` (not a valid DER-encoded ECDSA signature), causing this
+        method to return False.  No explicit length check is required; the ECDSA
+        library's DER parser rejects the wrong-length input automatically.
+
+        For unit testing (EDGE-VRP-042):
+            sig_hmac = AttestationRecord.sign_hmac(chain_id, srh, prev, stake, key)
+            rec = AttestationRecord(..., signature=sig_hmac,
+                                    verification_level=VerificationLevel.FULLY_VERIFIED)
+            # verify_ecdsa() returns False — HMAC bytes are not a valid DER ECDSA sig
+            assert not rec.verify_ecdsa(some_ecdsa_public_key)
+
+        For FULLY_VERIFIED chains, callers MUST use verify_ecdsa(). Using verify_hmac()
+        on a FULLY_VERIFIED attestation is a logic error and will produce incorrect results
+        (hmac.compare_digest will fail since the signature is DER bytes, not HMAC hex).
+        Validators SHOULD log a security event if signature length ≤ 64 hex chars on a
+        FULLY_VERIFIED attestation (possible algorithm confusion attack attempt).
+
+        <!-- Addresses EDGE-049, EDGE-050, EDGE-054, EDGE-VRP-042, EDGE-VRP-043 -->
         """
         try:
             payload = self.compute_signature_payload(
@@ -816,7 +883,53 @@ class ProofChain:
         # Verify root_hash
         if self.root_hash and self.root_hash != self.steps[-1].step_hash:
             return False
+
+        # Note: cumulative_hash is NOT re-verified here (it is a fingerprint, not a chain link).
+        # An unfinalized chain (finalized_at is None, root_hash = "") will have the root_hash
+        # check skipped (empty string is falsy), so verify_integrity() may return True for an
+        # unfinalized chain if step hashes are consistent. Callers requiring a finalized chain
+        # MUST separately check `chain.finalized_at is not None`.
+        # <!-- Addresses EDGE-VRP-071 -->
         return True
+
+    def verify_attestation_chain(self) -> bool:
+        """
+        Verify the hash-chain integrity of the AttestationRecord sequence.
+
+        Checks that each record's `previous_hash` matches the `compute_record_hash()`
+        of the preceding record (genesis record has `previous_hash = ""`).
+
+        Returns:
+            True  — attestation chain is non-empty and all hash links are consistent.
+            False — chain is empty, or any `previous_hash` link is broken (tampering detected).
+
+        Does NOT verify cryptographic signatures — use `AttestationRecord.verify_hmac()`
+        or `AttestationRecord.verify_ecdsa()` for signature verification.
+
+        Usage in unit tests (AC4 — hash-chain tamper detection):
+
+            # Tamper with a field after attestation is added
+            chain.attestations[0].validator_id = "did:maat:validator:tampered00000000"
+            assert not chain.verify_attestation_chain()  # detects the tampered record_hash
+
+            # Note: verify_attestation_chain() detects hash-link breaks.
+            # To detect signature forgery on a single record, call verify_hmac()/verify_ecdsa().
+
+        <!-- Addresses EDGE-VRP-033, EDGE-VRP-034 -->
+        """
+        if not self.attestations:
+            return False
+        expected_prev = ""
+        for rec in self.attestations:
+            if rec.previous_hash != expected_prev:
+                return False
+            expected_prev = rec.compute_record_hash()
+        return True
+
+    # Maximum AttestationRecords per ProofChain.
+    # Prevents unbounded attestation growth. Matches §Capacity Limits Summary table.
+    # <!-- Addresses EDGE-VRP-067 -->
+    MAX_ATTESTATIONS_PER_CHAIN: int = field(default=100, init=False, repr=False, compare=False)
 
     def add_attestation(self, record: AttestationRecord) -> None:
         """
@@ -824,16 +937,24 @@ class ProofChain:
 
         Rules:
         1. Chain must be finalized before attestation.
-        2. record.chain_id must match self.chain_id.
-        3. record.previous_hash must match the hash of the last attestation
+        2. Chain must not have reached MAX_ATTESTATIONS_PER_CHAIN (100).
+        3. record.chain_id must match self.chain_id.
+        4. record.previous_hash must match the hash of the last attestation
            (or "" if this is the first attestation).
-        4. record.verification_level must match self.verification_level.
-        5. For FULLY_VERIFIED: ECDSA signature format required (checked at verification time).
+        5. record.verification_level must match self.verification_level.
+        6. For FULLY_VERIFIED: ECDSA signature format required (checked at verification time).
 
-        <!-- Addresses EDGE-003, EDGE-008, EDGE-009, EDGE-044, EDGE-045, EDGE-046 -->
+        <!-- Addresses EDGE-003, EDGE-008, EDGE-009, EDGE-044, EDGE-045, EDGE-046,
+             EDGE-VRP-067 -->
         """
         if self.finalized_at is None:
             raise VRPStateError("Finalize the ProofChain before adding AttestationRecords")
+
+        if len(self.attestations) >= 100:
+            raise VRPCapacityError(
+                "ProofChain has reached maximum attestation limit (100). "
+                "See §Capacity Limits Summary."
+            )
 
         if record.chain_id != self.chain_id:
             raise VRPValidationError(
@@ -936,14 +1057,52 @@ class ProofChain:
 
 ## Error Hierarchy
 
-<!-- Addresses EDGE-018, EDGE-027, EDGE-028, EDGE-030, EDGE-055, EDGE-063 -->
+<!-- Addresses EDGE-018, EDGE-027, EDGE-028, EDGE-030, EDGE-055, EDGE-063,
+     EDGE-VRP-045, EDGE-VRP-008, EDGE-VRP-009, EDGE-VRP-010,
+     EDGE-VRP-011, EDGE-VRP-012 -->
 
 ```python
 class VRPError(Exception):
     """Base exception for all VRP errors."""
 
 class VRPValidationError(VRPError):
-    """Raised when schema field validation fails."""
+    """Raised when schema field validation fails (field-level constraint violations)."""
+
+class VerificationError(VRPValidationError):
+    """
+    Raised when a VerifiableStep violates a named inference rule's structural constraints.
+
+    This is a subclass of VRPValidationError that signals specifically that a
+    *rule-level* constraint was violated — e.g., the minimum or maximum premise
+    count for a named InferenceRule was not satisfied.
+
+    Unit tests asserting AC2 (issue #128) MUST catch `VerificationError` (not
+    the base `VRPValidationError`) when testing inference rule violations.
+    Both exception types satisfy `isinstance(e, VRPValidationError)`.
+
+    Raised by:
+        VerifiableStep._validate() when:
+          - len(premises) < _MIN_PREMISES[inference_rule]
+          - len(premises) > _MAX_PREMISES[inference_rule]  (where a max exists)
+          - inference_rule == DATA_LOOKUP and evidence list is empty
+
+    Not raised for:
+        - Field-level errors (invalid step_id, bad confidence, etc.) — those
+          raise VRPValidationError directly.
+        - State errors (finalized chain, wrong sequence) — those raise VRPStateError.
+
+    Example:
+        with pytest.raises(VerificationError) as exc:
+            VerifiableStep(
+                step_id=0,
+                premises=["only one premise"],
+                inference_rule=InferenceRule.MODUS_PONENS,
+                conclusion="Q",
+                confidence=0.9,
+            )
+        assert "modus_ponens" in str(exc.value)
+        assert "≥2 premises" in str(exc.value)
+    """
 
 class VRPVersionError(VRPError):
     """Raised when an unsupported schema version is encountered during deserialization."""
@@ -1528,3 +1687,363 @@ The `evidence` list in `VerifiableStep` may contain package names, SBOM entries,
 | EDGE-073 | Multi-Tenancy | NOT SPECIFIED | ✅ Fully Addressed |
 | EDGE-074 | IPFS Outage / Persistence | NOT SPECIFIED | ✅ Fully Addressed |
 | EDGE-075 | WASM Stdlib Compatibility | NOT SPECIFIED | ✅ Fully Addressed |
+
+---
+
+## Unit Testing Guide (Issue #128)
+
+<!-- Addresses EDGE-VRP-001–EDGE-VRP-080 (VRP Unit Test edge cases, Issue #128) -->
+
+This section is the authoritative reference for writing unit tests for the VRP Python data model
+(Issue #128 — Unit Tests). Tests MUST conform to this guide to satisfy acceptance criteria
+AC1–AC7.
+
+---
+
+### Scope: VRP Core Modules for Coverage Measurement (AC5)
+
+<!-- Addresses EDGE-VRP-077 -->
+
+The ≥90% line coverage requirement (AC5) applies to the following module set, which constitutes
+**VRP core modules**:
+
+| Module | Description | Included in ≥90% Coverage? |
+|---|---|---|
+| `maatproof/vrp/data_model.py` | `VerifiableStep`, `ProofChain`, `AttestationRecord`, all error classes | ✅ Yes |
+| `maatproof/vrp/verify.py` | `LogicVerifier`, `VerificationResult`, `ArtifactError` | ✅ Yes |
+| `maatproof/vrp/config.py` | `VRPConfig`, `VerificationLevel` enum | ✅ Yes |
+| `maatproof/vrp/__init__.py` | Public API re-exports | ✅ Yes |
+| `maatproof/vrp/attest.py` | `collect_attestations()`, gRPC client code | ❌ No — requires gRPC; excluded from unit test coverage |
+| `maatproof/vrp/deploy_gate.py` | CI deploy gate checker | ❌ No — integration layer |
+
+Coverage command:
+```bash
+pytest tests/test_vrp_unit.py -v \
+  --cov=maatproof/vrp/data_model \
+  --cov=maatproof/vrp/verify \
+  --cov=maatproof/vrp/config \
+  --cov=maatproof/vrp/__init__ \
+  --cov-report=term-missing \
+  --cov-fail-under=90
+```
+
+---
+
+### Test Isolation Strategy — No External Services (AC5, AC6)
+
+<!-- Addresses EDGE-VRP-073, EDGE-VRP-074, EDGE-VRP-075 -->
+
+All unit tests in issue #128 MUST run without external services (no KMS, no gRPC, no IPFS,
+no Azure Key Vault). The following patterns are required:
+
+#### 1. HMAC Testing (SELF_VERIFIED / PEER_VERIFIED)
+
+Use an in-process hardcoded secret key. No KMS call is required:
+
+```python
+SECRET_KEY = b"test-only-hmac-key-32-bytes-long!!"  # exactly 32 bytes
+```
+
+#### 2. ECDSA Testing (FULLY_VERIFIED)
+
+Generate an ephemeral P-256 key pair in-process — no KMS or hardware key required:
+
+```python
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.backends import default_backend
+
+@pytest.fixture
+def ecdsa_key_pair():
+    """Ephemeral P-256 key pair for unit testing FULLY_VERIFIED attestations."""
+    private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
+    return private_key, private_key.public_key()
+```
+
+#### 3. VRPConfig Testing
+
+Use a minimal in-memory configuration dict instead of loading a `.toml` file:
+
+```python
+@pytest.fixture
+def vrp_config_stub():
+    """Minimal VRPConfig for unit testing — bypasses Key Vault and TLS."""
+    from unittest.mock import MagicMock
+    cfg = MagicMock()
+    cfg.verification_level = VerificationLevel.SELF_VERIFIED
+    cfg.quorum_threshold = 1
+    cfg.maat_stake_min = 0
+    cfg.validator_endpoints = []
+    cfg.timeout_seconds = 30
+    return cfg
+```
+
+#### 4. LogicVerifier Artifacts Directory
+
+Use `tempfile.mkdtemp()` to create an isolated temporary directory for `.proof.json` files:
+
+```python
+import tempfile, json, os
+
+@pytest.fixture
+def artifacts_dir(tmp_path):
+    """Create a temp directory with a valid .proof.json file."""
+    chain = build_valid_chain()  # helper that creates a finalized ProofChain
+    proof_file = tmp_path / "test.proof.json"
+    proof_file.write_text(json.dumps(chain.to_dict()))
+    return str(tmp_path)
+```
+
+---
+
+### Inference Rule Structural Validation (AC1)
+
+<!-- Addresses EDGE-VRP-001–EDGE-VRP-014 -->
+
+`LogicVerifier` and `VerifiableStep` perform **structural validation** of inference rules —
+they do NOT verify logical entailment (i.e., they do not use an LLM to check whether the
+premises actually imply the conclusion). Unit tests for AC1 test the structural constraints:
+
+| Rule | Structural Constraint Tested |
+|---|---|
+| `modus_ponens` | min 2 premises; any 2 strings accepted; conclusion is any non-empty string |
+| `conjunction` | min 2 premises |
+| `disjunctive_syllogism` | EXACTLY 2 premises (max=2 enforced); any 2 strings |
+| `induction` | min 2 premises (premises[0]=base case, premises[1..n]=inductive steps by convention) |
+| `abduction` | min 2 premises |
+| `data_lookup` | min 1 premise; evidence list MUST be non-empty (VerificationError raised if empty) |
+| `threshold` | min 1 premise |
+
+For each rule, the positive test confirms: valid `VerifiableStep` is constructed without exception.
+For each rule, the negative test confirms: insufficient premises raises `VerificationError`.
+
+Example positive test:
+```python
+def test_modus_ponens_valid():
+    step = VerifiableStep(
+        step_id=0,
+        premises=["P is true", "P → Q (if P then Q)"],
+        inference_rule=InferenceRule.MODUS_PONENS,
+        conclusion="Q is true",
+        confidence=0.95,
+    )
+    assert step.inference_rule == InferenceRule.MODUS_PONENS
+
+def test_modus_ponens_too_few_premises():
+    with pytest.raises(VerificationError) as exc:
+        VerifiableStep(
+            step_id=0,
+            premises=["Only one premise"],
+            inference_rule=InferenceRule.MODUS_PONENS,
+            conclusion="Q",
+            confidence=0.9,
+        )
+    assert "modus_ponens" in str(exc.value)
+    assert "≥2 premises" in str(exc.value)
+```
+
+---
+
+### Premise Validity in the Python Layer (AC3)
+
+<!-- Addresses EDGE-VRP-015, EDGE-VRP-016, EDGE-VRP-017 -->
+
+**Context**: The Rust-layer `vrp-spec.md` defines `PremiseRef` with typed `PremiseType`
+values (`PriorStep`, `EvidenceArtifact`, `PolicyRule`, `EnvironmentFact`). The Python data
+model uses `List[str]` premises — plain strings, not typed references.
+
+**AC3 re-scoping for the Python layer**: In Python, "axioms or prior conclusions only" is
+enforced at the `ProofChain` level, not the `VerifiableStep` level. A premise is valid if:
+
+1. **Axiom**: Any factual claim string that does NOT reference a specific `step_id` by
+   convention (e.g., `"Test coverage = 87%"`, `"No critical CVEs found"`).
+
+2. **Prior conclusion**: A string that cites the conclusion of a prior step. By convention,
+   MaatProof agents format prior-conclusion premise references as:
+   `f"[step:{prior_step_id}] {prior_conclusion_text}"` or cite the `step_hash` directly.
+
+**Python-layer premise reference validation** (optional, enforced by `ProofChain.validate_step_references()`):
+
+```python
+def validate_step_references(self) -> List[str]:
+    """
+    Validate that any premise formatted as '[step:N] ...' references a step_id N
+    that actually exists earlier in this ProofChain (N < current step's step_id).
+
+    Returns a list of validation error strings (empty if all references are valid).
+
+    This is an optional advisory check — `add_step()` does NOT call this method.
+    Validators MAY call this for additional semantic validation.
+
+    AC3 unit test pattern:
+        chain = ProofChain(...)
+        chain.add_step(step0)   # step_id=0, conclusion="X"
+        step1 = VerifiableStep(
+            step_id=1,
+            premises=["[step:0] X"],   # valid: references step 0 which exists
+            ...
+        )
+        chain.add_step(step1)
+        assert chain.validate_step_references() == []  # no errors
+
+        step2 = VerifiableStep(
+            step_id=2,
+            premises=["[step:99] non-existent"],  # invalid: step 99 doesn't exist
+            ...
+        )
+        chain.add_step(step2)
+        errors = chain.validate_step_references()
+        assert any("step:99" in e for e in errors)
+
+    <!-- Addresses EDGE-VRP-015, EDGE-VRP-016, EDGE-VRP-017 -->
+    """
+    errors = []
+    for step in self.steps:
+        for premise in step.premises:
+            # Check for "[step:N]" reference pattern
+            import re
+            m = re.match(r'^\[step:(\d+)\]', premise)
+            if m:
+                ref_id = int(m.group(1))
+                if ref_id >= step.step_id:
+                    errors.append(
+                        f"Step {step.step_id} premise references step {ref_id} "
+                        f"which does not precede it (forward reference or self-reference). "
+                        "Premises must reference only prior steps (step_id < current step_id)."
+                    )
+    return errors
+```
+
+**Note on Python vs Rust premise validation**: The Rust layer's `PremiseRef` provides
+stronger type-safe premise reference validation. The Python layer's `validate_step_references()`
+is a best-effort text-pattern check. Full premise validity for production deployments is
+enforced by the Rust AVM layer when the `ProofChain` is embedded in a `DeploymentTrace`.
+
+---
+
+### Python InferenceRule ↔ Rust InferenceRule Mapping
+
+<!-- Addresses EDGE-VRP-078 -->
+
+The Python data model (`vrp-data-model-spec.md`) defines **7 formal logic inference rules**
+(classical logic foundations). The Rust AVM layer (`vrp-spec.md`) defines **9 deployment
+authorization inference rules** (domain-specific policy rules). These are **different abstraction
+levels** — not alternatives.
+
+| Python InferenceRule | Level | Rust InferenceRule(s) | Level |
+|---|---|---|---|
+| `MODUS_PONENS` | Formal logic | `PolicyMatch` | Domain-specific policy |
+| `CONJUNCTION` | Formal logic | N/A (implicit) | |
+| `DISJUNCTIVE_SYLLOGISM` | Formal logic | N/A (implicit) | |
+| `INDUCTION` | Formal logic | N/A (implicit) | |
+| `ABDUCTION` | Formal logic | `MetricBudget` | Domain-specific |
+| `DATA_LOOKUP` | Formal logic | `HashEquality`, `StakeVerification`, `SignatureVerification` | Domain-specific |
+| `THRESHOLD` | Formal logic | `ThresholdComparison`, `MetricBudget`, `ScanClearance`, `QuorumCheck` | Domain-specific |
+
+**Mapping rule**: A single Rust `InferenceRule` maps to a Python `VerifiableStep` using the
+Python rule that best describes the logical structure of the inference. For example:
+
+- Rust `ThresholdComparison { metric: "coverage", threshold: 80 }` → Python `THRESHOLD`
+  with `premises=["coverage = 87%", "policy requires ≥ 80%"]` and `conclusion="coverage requirement satisfied"`
+- Rust `SignatureVerification { signer_did, payload_hash }` → Python `DATA_LOOKUP`
+  with `premises=["signature verified by validator did:maat:..."]` and `evidence=[payload_cid]`
+- Rust `PolicyMatch { rule_id, policy_hash }` → Python `MODUS_PONENS`
+  with `premises=["policy rule no_friday_deploys", "today is not Friday"]`
+
+Issue #128 unit tests target the **Python data model layer only** (7 rules). Integration
+tests (issue TBD) cover the full Rust AVM pipeline (9 rules).
+
+---
+
+### Equality and Round-Trip Notes for Tests (EDGE-VRP-068, EDGE-VRP-070)
+
+<!-- Addresses EDGE-VRP-068, EDGE-VRP-070 -->
+
+**`step_hash` and `compare=False`**: `VerifiableStep.step_hash` is declared with
+`compare=False` in the dataclass field. This means:
+- `step1 == step2` returns True even if `step1.step_hash != step2.step_hash`.
+- Round-trip equality assertions should compare `step.to_dict()` dicts, not steps directly,
+  when `step_hash` fidelity matters.
+
+```python
+# ✅ Correct round-trip test
+chain_dict = chain.to_dict()
+reconstructed = ProofChain.from_dict(chain_dict)
+assert reconstructed.to_dict() == chain_dict
+
+# ❌ May miss step_hash differences (compare=False)
+# assert reconstructed.steps[0] == chain.steps[0]
+```
+
+**`root_hash` vs `cumulative_hash` are always distinct** for finalized chains: `root_hash` is
+the last step's `step_hash`; `cumulative_hash` is the SHA-256 of all step hashes concatenated.
+They are always different because `sha256(x) ≠ x` for any step hash `x`. Tests asserting these
+two values differ are correct and expected.
+
+---
+
+### Performance Guidance (EDGE-VRP-065)
+
+<!-- Addresses EDGE-VRP-065 -->
+
+`ProofChain.verify_integrity()` on a 500-step chain MUST complete in under 5 seconds
+on standard CI hardware (2-core, 4 GB RAM runner). This is a non-regression guideline,
+not a hard timeout. The operation is O(N) in the number of steps.
+
+If the test suite includes a 500-step chain test, mark it with `@pytest.mark.slow`
+to allow CI to separate fast and slow test suites:
+```python
+@pytest.mark.slow
+def test_verify_integrity_500_steps():
+    chain = build_chain_with_n_steps(500)
+    chain.finalize()
+    assert chain.verify_integrity()
+```
+
+---
+
+### Thread Safety Guidance (EDGE-VRP-066)
+
+<!-- Addresses EDGE-VRP-066 -->
+
+`ProofChain` is NOT thread-safe. Unit tests MUST NOT assert specific behavior for concurrent
+access. The correct test pattern is to document the non-thread-safe behavior:
+
+```python
+def test_proof_chain_not_thread_safe_documented():
+    """
+    Confirms that ProofChain is documented as not thread-safe.
+    External locking (threading.Lock) is required for concurrent access.
+    """
+    # This test is a documentation assertion, not a behavior assertion.
+    # See vrp-data-model-spec.md §Thread Safety.
+    import maatproof.vrp.data_model as dm
+    assert "NOT thread-safe" in dm.ProofChain.__doc__
+```
+
+---
+
+### Summary: Gap Closure Table (Iteration 2 — Issue #128 Unit Test Gaps)
+
+| Scenario Range | Category | Gap Before This Section | Status After |
+|---|---|---|---|
+| EDGE-VRP-001–007 | Inference Rule Positive | Logical form validation unclear | ✅ Structural validation only — specified above |
+| EDGE-VRP-008–012 | Inference Rule Negative | `VerificationError` missing | ✅ Added to error hierarchy |
+| EDGE-VRP-010 | DISJUNCTIVE_SYLLOGISM max | `_MAX_PREMISES` not enforced | ✅ Added to `_validate()` |
+| EDGE-VRP-013 | DATA_LOOKUP evidence | Only in LogicVerifier, not schema | ✅ Added to `VerifiableStep._validate()` |
+| EDGE-VRP-015–017 | Premise validity (AC3) | No Python axiom/prior-conclusion concept | ✅ Re-scoped; `validate_step_references()` specified |
+| EDGE-VRP-033–034 | Attestation chain tamper | No `verify_attestation_chain()` | ✅ Method added to `ProofChain` |
+| EDGE-VRP-040,075 | ECDSA test isolation | No ephemeral key pattern specified | ✅ Ephemeral key fixture specified above |
+| EDGE-VRP-042–043 | Algorithm confusion | `verify_ecdsa()` length check unclear | ✅ Clarified in `verify_ecdsa()` docstring |
+| EDGE-VRP-045 | `VerificationError` missing | Not in error hierarchy | ✅ Added as `VRPValidationError` subclass |
+| EDGE-VRP-052 | `ArtifactError.error_type` | String constants not defined | ✅ See `vrp-cicd-spec.md §Error Code Reference` |
+| EDGE-VRP-061 | `cumulative_hash` tampering | `verify_integrity()` behavior unclear | ✅ Clarified in `verify_integrity()` docstring |
+| EDGE-VRP-065 | Performance SLA | No timing guidance | ✅ 5-second guideline specified above |
+| EDGE-VRP-066 | Thread safety observable | No test pattern | ✅ Documentation-assertion pattern specified |
+| EDGE-VRP-067 | Max attestations capacity | `add_attestation()` missing check | ✅ Added capacity check |
+| EDGE-VRP-068 | Round-trip equality | `compare=False` trap | ✅ Clarified above |
+| EDGE-VRP-070 | `root_hash ≠ cumulative_hash` | Implicit | ✅ Made explicit above |
+| EDGE-VRP-071 | Unfinalized chain integrity | Behavior undocumented | ✅ Clarified in `verify_integrity()` docstring |
+| EDGE-VRP-073–074 | Test isolation | No mock strategy | ✅ Fixture patterns specified above |
+| EDGE-VRP-077 | VRP module scope (AC5) | "core modules" undefined | ✅ Module list defined above |
+| EDGE-VRP-078 | Python 7-rule vs Rust 9-rule | No mapping | ✅ Cross-layer mapping table added above |
+| EDGE-VRP-080 | Metadata key validation | Missing from `_validate()` | ✅ Added to `_validate()` |
