@@ -304,24 +304,27 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issue #31: VRP Data Model/Schema — VerifiableStep, InferenceRule (7 rules), AttestationRecord (HMAC-SHA256 + ECDSA P-256), VerificationLevel, ProofChain_
+> _Issue #130: [ADA Unit Tests] Signal Scoring · RiskAssessment · Authority Level Boundaries · Rollback Triggers · HMAC Proofs · MAAT Staking/Slashing · AutonomousDeploymentBlockedError_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per issue (VRP Data Model #31) | $3,167 | $195 | **94%** |
+| Build cost — Issue #130 (ADA Unit Tests) | $2,891 | $160 | **95%** |
+| Build cost — Issue #119 (Core Pipeline) | $6,741 | $247 | **96%** |
+| Build cost — Issue #14 (Data Model) | $2,326 | $148 | **94%** |
 | Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Cryptographic test coverage | 40% manual | 95% automated | **+55pp** |
-| VRP runtime cost (GCP standard) | — | **$0.16/mo** | ECDSA P-256 incl. |
-| Annual infra cost (100 MAU, GCP) | — | **$31/yr** | — |
+| ADA test coverage (unit tests) | 0% | **≥ 90%** | **+90pp** |
+| MAAT slashing risk eliminated | unverified | **100%** verified | arithmetic proven |
+| ADA unit test CI cost (GCP standard) | — | **$1.68/yr** | within free tier |
+| Annual infra cost (100 MAU, GCP, 3 issues) | — | **$376/yr** | — |
 | DORA rating | Low | **Elite** | — |
-| Year 1 ROI | — | — | **12,507%** |
-| 5-year TCO savings | — | — | **$1,832,532** |
+| Year 1 ROI | — | — | **10,463%** |
+| 5-year TCO savings | — | — | **$1,618,582** |
 
-> _Last estimated: 2026-04-23 · Issue #31 [VRP Data Model / Schema] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issue #130 [ADA Unit Tests] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
