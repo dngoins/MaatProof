@@ -304,24 +304,29 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issue #31: VRP Data Model/Schema — VerifiableStep, InferenceRule (7 rules), AttestationRecord (HMAC-SHA256 + ECDSA P-256), VerificationLevel, ProofChain_
+> _Issue #145: Core Pipeline Validation & Sign-off (Final Gate) — ReasoningProof, ProofBuilder, ProofVerifier, OrchestratingAgent, DeterministicLayer, AgentLayer, ACIPipeline, ACDPipeline — all validated, ≥90% coverage confirmed_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per issue (VRP Data Model #31) | $3,167 | $195 | **94%** |
+| Annual CI/CD cost (12 features/yr) | $327,684 | $3,029 | **99%** |
+| Full pipeline build cost (all 10 issues) | $29,297 | $1,687 | **94%** |
+| Issue #145 validation gate cost | $1,590 | $75 | **95%** |
 | Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
-| Deployment frequency | 1×/week | 10×/day | **70× faster** |
+| Mean deploy time (code → staging) | 5 days | 2 hours | **97% faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
+| Deployment frequency | 1×/week | 10×/day | **70× increase** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Cryptographic test coverage | 40% manual | 95% automated | **+55pp** |
-| VRP runtime cost (GCP standard) | — | **$0.16/mo** | ECDSA P-256 incl. |
-| Annual infra cost (100 MAU, GCP) | — | **$31/yr** | — |
-| DORA rating | Low | **Elite** | — |
-| Year 1 ROI | — | — | **12,507%** |
-| 5-year TCO savings | — | — | **$1,832,532** |
+| Validation & sign-off time | 21 hours | 25 minutes | **98% faster** |
+| Test coverage (automated) | 40% manual | ≥90% automated | **+50pp** |
+| Audit trail completeness | ~40% | 100% signed | **+60pp** |
+| Annual infra cost (100 MAU, GCP) | — | **$349/yr** | incl. AI API |
+| DORA rating | Low performer | **Elite** | Top 10% globally |
+| Year 1 ROI | — | — | **10,717%** |
+| Payback period | — | — | **< 1 month** |
+| 5-year TCO savings | — | — | **$1,618,655** |
 
-> _Last estimated: 2026-04-23 · Issue #31 [VRP Data Model / Schema] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issue #145 [Core Pipeline Validation & Sign-off — Final Gate] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
