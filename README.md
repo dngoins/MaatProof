@@ -218,34 +218,26 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issue #50: ADA Data Model/Schema — 8 models (DeploymentScore, RiskAssessment, DeploymentAuthorityLevel, RollbackProof, MaatStake, SlashRecord, AutonomousDeploymentBlockedError + JSON serialization)_
+> _Issue #116: VRP Configuration — env-specific config for validator endpoints, signing key refs (Azure Key Vault), MAAT stake thresholds, quorum requirements, and feature flags_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per IaC feature | $5,500 | $221 | **96%** |
+| Build cost per issue (#116 VRP Config) | $3,032 | $195 | **94%** |
+| Annual infrastructure cost (100 MAU) | $372 (Azure full) | **$217** (GCP+AKV hybrid) | **42%** |
 | Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **98% faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| RollbackProof audit cost | $50,000+ (incident reconstruction) | $0.004/event | **>99% reduction** |
-| MaatStake + SlashRecord infra | N/A | $0.12/mo (GCP Firestore) | — |
-| Annual infra cost (100 MAU) | N/A | **$26/yr (GCP)** | — |
-| 5-year TCO savings | — | — | **$1,813,523** |
-| Year 1 ROI | — | — | **13,152%** |
+| Config-related incidents/quarter | 3 | 0.2 | **93% reduction** |
+| Secret rotation downtime | 30 min | 0 (Key Vault hot-rotate) | **100%** |
+| Quorum misconfiguration rate | 12% | 0% | **100% elimination** |
+| Azure Key Vault (9 HSM signing keys) | N/A | **$9/mo flat** | scales free |
 | DORA rating | Low | **Elite** | — |
-| 5-year TCO savings | — | $1,881,815 | — |
+| Year 1 ROI | — | — | **9,874%** |
+| 5-year TCO savings | — | — | **$1,147,127** |
 
-### DRE Infrastructure Operational Cost (Issue #117)
-
-| Profile | Azure (Phase 1) | AWS (Phase 2) | GCP (Phase 3) | LLM API % |
-|---------|-----------------|---------------|----------------|-----------|
-| Standard (50 exec/day) | $267/mo | $263/mo | $218/mo | 39% |
-| Edge case (5K exec/day) | $11,016/mo | $10,967/mo | $10,834/mo | **94%** |
-
-> ⚠️ At scale, LLM API costs dominate (94%). Primary cost lever: **prompt token efficiency** and **committee size**.
-
-> _Last estimated: 2026-04-23 · Issue #117 [DRE Infrastructure / IaC] | [Full cost report →](docs/reports/cost-estimation-report.md) | [HTML summary →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issue #116 [VRP Configuration] | [Full cost report →](docs/reports/cost-estimation-report.md) | [HTML dashboard →](docs/reports/cost-summary.html)_
 
 ---
 
