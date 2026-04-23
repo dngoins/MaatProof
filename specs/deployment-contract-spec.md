@@ -207,6 +207,12 @@ contract DeployPolicy is IDeployPolicy {
 
     function deactivate() external onlyOwner {
         active = false;
+        // NOTE: In-flight deployments (PENDING/VERIFYING/VOTING) that already
+        // hold a policy_version snapshot continue to completion. The AVM is
+        // responsible for tracking active deployments per policy_ref and emitting
+        // a pending_deployment_count in the PolicyDeactivated event.
+        // New submissions after deactivate() are rejected with POLICY_DEACTIVATED.
+        // See docs/06-security-model.md §Policy Deactivation Mid-Round (EDGE-192).
     }
 
     modifier onlyOwner() {
@@ -215,6 +221,23 @@ contract DeployPolicy is IDeployPolicy {
     }
 }
 ```
+
+### Policy Deactivation Behaviour (EDGE-192)
+
+<!-- Addresses EDGE-192 -->
+
+When `deactivate()` is called on an active policy:
+
+| State | Behaviour |
+|-------|-----------|
+| Deployment in PENDING/VERIFYING/VOTING (using this policy version) | Continues to completion; policy snapshot was captured at submission |
+| New deployment submission after `deactivate()` | Rejected: `POLICY_DEACTIVATED (409)` |
+| `evaluate()` called on deactivated policy | Reverts with `"Policy is deactivated"` |
+
+The `PolicyDeactivated` event SHOULD include a `pending_deployment_count` field
+(requires AVM coordination — tracked as future contract enhancement).  Until that
+field is available, operators SHOULD query the AVM API for active deployments
+referencing this `policy_ref` before calling `deactivate()`.
 
 ---
 

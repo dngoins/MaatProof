@@ -188,3 +188,41 @@ event SlashExecuted(
 );
 event SlashDismissed(uint256 indexed evidenceId, uint256 depositForfeited);
 ```
+
+---
+
+## Slashing Contract Address Integrity (EDGE-195)
+
+<!-- Addresses EDGE-195 -->
+
+`MaatToken.setSlashingContract(address newSlashing)` is the privileged function
+that configures which contract is permitted to call `MaatToken.slash()`. If this
+address is set to a broken, malicious, or zero address, staked tokens could
+become permanently locked or redirected.
+
+### Required Protections
+
+1. **Interface check**: `setSlashingContract()` MUST call
+   `ISlashing(newSlashing).supportsInterface(type(ISlashing).interfaceId)` and
+   revert with `INVALID_SLASHING_CONTRACT` if the call fails, reverts, or returns
+   false.
+2. **Zero-address guard**: `require(newSlashing != address(0), "Zero address")`.
+3. **Governance gate**: `setSlashingContract()` MUST be gated by an
+   `onlyGovernance` modifier (not `onlyOwner`), requiring a passed governance
+   proposal.
+4. **7-day timelock**: The governance proposal for this call enforces a minimum
+   7-day execution timelock.
+5. **Emit event**: `SlashingContractUpdated(address indexed oldAddress, address indexed newAddress)`
+   is emitted on every change for auditability.
+
+### Recovery Path if Broken Contract Is Set
+
+If a broken slashing contract address is set despite the above guards (e.g.,
+via a governance attack), the recovery path is:
+
+1. Governance votes to call `setSlashingContract(newValidAddress)` again.
+2. Until the new valid address is set, `MaatToken.slash()` will revert for all
+   calls from the broken address — stake cannot be slashed but also cannot be
+   withdrawn (lock still applies).
+3. The DAO treasury can fund a remediation bounty via `Governance.execute()` to
+   incentivise identification of a fix.

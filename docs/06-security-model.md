@@ -225,6 +225,58 @@ Policy rule: **an agent whose trace shows a reasoning step that references syste
 
 ---
 
+## Smart Contract Access Controls
+
+<!-- Addresses EDGE-176 (vesting beneficiary), EDGE-192 (policy deactivation mid-round),
+     EDGE-195 (broken slashing contract address) -->
+
+### Vesting Contract Beneficiary Protection (EDGE-176)
+
+The `Vesting.sol` contract restricts beneficiary changes to prevent attacker
+address substitution:
+
+- **Only the original beneficiary** may call `changeBeneficiary()` (if supported at all).
+- If the contract owner has a key compromise, beneficiary change requires a
+  **governance vote** (2/3 supermajority, 72-hour voting period).
+- `Vesting.sol` MUST emit a `BeneficiaryChangeProposed` event with a 48-hour
+  timelock before any beneficiary change takes effect.
+- A compromised owner key that attempts to change a vesting beneficiary without
+  the timelock is treated as a governance attack; validators can submit slashing
+  evidence under `AGENT_MALICIOUS_DEPLOY`.
+
+### Slashing Contract Address Integrity (EDGE-195)
+
+`MaatToken.setSlashingContract()` is a privileged function with serious security
+implications. Its specification requires:
+
+1. **Interface validation**: Before accepting a new slashing contract address,
+   `setSlashingContract()` MUST call `ISlashing(newAddress).supportsInterface(ISLASHING_INTERFACE_ID)`
+   and revert if the call fails or returns false.  This prevents setting the
+   slashing contract to an EOA, zero address, or incompatible contract.
+2. **Governance-only**: `setSlashingContract()` is gated by `onlyGovernance`
+   modifier (not just `onlyOwner`) and requires a passed governance proposal.
+3. **Timelock**: The governance proposal for `setSlashingContract()` enforces a
+   minimum 7-day timelock before execution.
+4. **Immutability option**: Once set in production, the slashing contract address
+   SHOULD be locked unless a governance supermajority (>80%) votes to change it.
+
+### Policy Deactivation Mid-Round (EDGE-192)
+
+When `DeployPolicy.deactivate()` is called while deployments that reference this
+policy are in-flight (status PENDING, VERIFYING, or VOTING):
+
+1. **In-flight deployments are NOT automatically cancelled**.  They continue to
+   completion using the policy version that was snapshotted at submission time
+   (`policy_version` field in the deployment trace).
+2. **New deployments** referencing the deactivated policy are immediately rejected
+   with `POLICY_DEACTIVATED (409)`.
+3. `DeployPolicy.deactivate()` MUST emit a `PolicyDeactivated` event with a
+   `pending_deployment_count` field so operators can track in-flight deployments.
+4. After the last in-flight deployment using this policy version is finalized
+   (or times out after 10 minutes), the policy is considered fully inactive.
+
+---
+
 ## Network Security
 
 Inter-node communication between AVM nodes, validators, and the API layer is secured by:
