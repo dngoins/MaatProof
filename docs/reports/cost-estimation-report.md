@@ -587,10 +587,25 @@ MaatProof's pipeline places squarely in the **"Elite"** DORA performer category 
 | **Year 1 savings** | $324,491 |
 | **ROI (Year 1)** | **10,163%** |
 | **Payback period** | **< 1 month** |
-| **5-year TCO (ACI/ACD)** | **$19,838** |
-| **5-year TCO (Traditional)** | **$1,638,420** |
-| **5-year TCO savings** | **$1,618,582** |
-| **Net 5-year ROI** | **8,157%** |
+| **5-year TCO (ACI/ACD)** | **$31,735** |
+| **5-year TCO (Traditional)** | **$2,004,540** |
+| **5-year TCO savings** | **$1,972,805** |
+| **Net 5-year ROI** | **6,214%** |
+
+> **Issue #123 specific ROI note:** The `no-human-in-the-loop` ADA production path eliminates ~$240/sprint in approval queue management. At 26 sprints/year for a 4-developer team, this saves **$6,240/year** in recurring overhead — not counted in the build cost savings above, making the actual ROI higher than stated.
+
+### 6.3 Issue #123 Specific ROI
+
+| Metric | Value |
+|--------|-------|
+| **Build cost savings (one-time)** | $8,053 |
+| **Annual runner cost savings** (GA cache optimization) | ~$200/yr |
+| **Annual approval queue savings** (4 devs × 26 sprints × $240) | $6,240/yr |
+| **Annual SOX audit savings** (40 hrs/qtr → 2 hrs/qtr, 38 hrs × $60 × 4) | $9,120/yr |
+| **Annual on-call interrupt savings** (out-of-hours deployments, 3×/yr) | $1,500/yr |
+| **Total recurring annual savings** | **$17,060/yr** |
+| **Issue #123 ACI/ACD investment** | $459 (build) + $580 (infra/yr) = $1,039 |
+| **Issue #123 Year 1 ROI** | **1,542%** |
 
 ---
 

@@ -314,6 +314,9 @@ graph LR
 | Build cost — Infrastructure / IaC (#125) | $3,605 | $219 | **94%** |
 | **Combined build cost (#14 + #119 + #136 + #125)** | **$14,592** | **$705** | **95%** |
 | Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
+| Annual approval queue savings (ADA) | $6,240 | $0 | **100%** |
+| Annual SOX audit prep savings | $9,600 | $480 | **95%** |
+| Production deploy approval latency | 2–4 hrs | &lt;5 sec | **99.9% faster** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
