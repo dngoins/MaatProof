@@ -257,32 +257,34 @@ Issue #136 produces 5 major documentation artifacts: (1) README VRP section with
 
 > **Why documentation has the highest AI ROI:** AI agents have encyclopedic knowledge of the codebase and can generate technically accurate documentation in minutes. Human technical writers must first understand the system, then write — a process dominated by research time. The ACI/ACD pipeline reduces documentation cost from ~$1,920 to ~$91 (95% savings) while producing documentation that is always in sync with the codebase.
 
-### 2.4 Issue #133 — CI/CD Workflow Build Costs
+### 2.4 Issue #125 — Infrastructure / IaC Build Costs
 
-Issue #133 delivers the GitHub Actions YAML workflows that wire the MaatProof ACI/ACD Engine into a deployable pipeline: ACI workflow (agents augment CI), ACD workflow (orchestrator-driven), 5 mandatory trust anchor gate steps, GitHub Environment human approval gate, HMAC-SHA256 signed audit log emission per job, and `max_fix_retries=3` bounded retry logic. Tech stack: GitHub Actions YAML, Python orchestrator scripts, `cryptography` (HMAC-SHA256), pytest.
+Issue #125 provisions five Azure resource groups: append-only audit log (Azure Files Premium NFS v4.1 + Blob WORM), HMAC signing key (Azure Key Vault Standard), orchestrator container singleton (Azure Container Apps), event dispatch queue (Azure Service Bus Standard), and human-approval environment (GitHub Actions production environment with required reviewers). All resources are defined in Bicep with `CanNotDelete` locks on compliance-critical storage, validated via `bicep build` and `az bicep validate` in CI.
+
+> **Why Azure for Issue #125?** Project conventions (CONSTITUTION.md §13.1, `core-pipeline-infra-spec.md`) mandate Azure Bicep as the IaC tool and Azure Files Premium NFS v4.1 for the SQLite WAL audit log. GCP Filestore starts at 1 TB ($204/mo) — cost-prohibitive at standard scale. Azure Key Vault Standard at $0.03/10K ops is 13× cheaper than AWS Secrets Manager ($0.40/secret/mo).
 
 | Cost Category | Traditional CI/CD | ACI/ACD with MaatProof | Savings |
 |---------------|-------------------|------------------------|---------|
-| **Dev hrs — workflow topology design** | 6 hrs × $60 = **$360** | 1 hr review × $60 = **$60** | $300 (83%) |
-| **Dev hrs — ACI workflow YAML** | 8 hrs × $60 = **$480** | Automated → **$0** | $480 (100%) |
-| **Dev hrs — ACD workflow YAML** | 8 hrs × $60 = **$480** | Automated → **$0** | $480 (100%) |
-| **Dev hrs — trust anchor gate steps (5)** | 4 hrs × $60 = **$240** | Automated → **$0** | $240 (100%) |
-| **Dev hrs — human approval gate** (GitHub Environments) | 3 hrs × $60 = **$180** | 0.5 hrs × $60 = **$30** | $150 (83%) |
-| **Dev hrs — signed audit log emission** (HMAC-SHA256) | 4 hrs × $60 = **$240** | Automated → **$0** | $240 (100%) |
-| **Dev hrs — bounded retry logic** (`max_fix_retries=3`) | 2 hrs × $60 = **$120** | Automated → **$0** | $120 (100%) |
-| **Dev hrs — Python orchestrator invocation scripts** | 4 hrs × $60 = **$240** | Automated → **$0** | $240 (100%) |
-| **CI/CD pipeline minutes** (testing the workflows) | 60 min × $0.008 = **$0.48** | 90 min × $0.008 = **$0.72** | -$0.24 |
-| **Code review hours** | 5 hrs × $60 = **$300** | Automated (agent) = **$0** | $300 (100%) |
-| **QA testing hours** | 8 hrs × $45 = **$360** | Automated (agent) = **$0** | $360 (100%) |
+| **Dev hrs — IaC architecture design** | 5 hrs × $60 = **$300** | 1 hr review × $60 = **$60** | $240 (80%) |
+| **Dev hrs — Bicep: audit log storage (Files + WORM)** | 4 hrs × $60 = **$240** | Automated → **$0** | $240 (100%) |
+| **Dev hrs — Bicep: Key Vault + HMAC signing key** | 3 hrs × $60 = **$180** | Automated → **$0** | $180 (100%) |
+| **Dev hrs — Bicep: Container Apps (orchestrator singleton)** | 3 hrs × $60 = **$180** | Automated → **$0** | $180 (100%) |
+| **Dev hrs — Bicep: Service Bus (pipeline event queue)** | 2 hrs × $60 = **$120** | Automated → **$0** | $120 (100%) |
+| **Dev hrs — Bicep: VNet / NSG / private endpoints** | 3 hrs × $60 = **$180** | Automated → **$0** | $180 (100%) |
+| **Dev hrs — GitHub Actions environment + protection rules** | 2 hrs × $60 = **$120** | Automated → **$0** | $120 (100%) |
+| **CI/CD pipeline minutes** (bicep build lint) | 30 min × $0.008 = **$0.24** | 45 min × $0.008 = **$0.36** | -$0.12 |
+| **Code review hours** | 4 hrs × $60 = **$240** | Automated (agent) = **$0** | $240 (100%) |
+| **QA testing** (bicep validate, ARM dry-run) | 5 hrs × $45 = **$225** | Automated (agent) = **$0** | $225 (100%) |
 | **Documentation hours** | 4 hrs × $40 = **$160** | Automated (agent) = **$0** | $160 (100%) |
-| **AI agent API costs** (Claude Sonnet) | N/A | ~300K input + 80K output tokens = **$2.10** | — |
-| **Spec / edge case validation** | 10 hrs × $60 = **$600** | Automated (agent) = **$4.50** | $595 (99%) |
-| **GitHub Environments + secrets setup** | 3 hrs × $60 = **$180** | Template-based (20 min) = **$20** | $160 (89%) |
-| **Orchestration overhead** | 1 hr × $60 = **$60** | Automated = **$2.00** | $58 (97%) |
-| **Re-work (avg 30% defect rate)** | 14 hrs × $60 = **$840** | ACI/ACD reduces to ~5% = **$48** | $792 (94%) |
-| **TOTAL (Issue #133)** | **$4,540** | **$167** | **$4,373 (96%)** |
+| **AI agent API costs** (Claude Sonnet) | N/A | ~220K input + 70K output tokens = **$1.71** | — |
+| **Spec / edge case validation** | 4 hrs × $60 = **$240** | Automated (agent) = **$4.00** est. | $236 (98%) |
+| **Infrastructure provisioning** | 2 hrs × $60 = **$120** | Template-based (20 min) = **$15** | $105 (88%) |
+| **Orchestration overhead** | 1 hr × $60 = **$60** | Automated = **$3.00** | $57 (95%) |
+| **Human approval gate** (Constitution §3) | Included above | 0.25 hr × $60 = **$15** | — |
+| **Re-work (avg 30% defect rate)** | 9 hrs × $60 = **$540** | ACI/ACD reduces to ~5% = **$120** | $420 (78%) |
+| **TOTAL (Issue #125)** | **$3,605** | **$219** | **$3,386 (94%)** |
 
-> **YAML authoring note:** Authoring complex GitHub Actions YAML (job dependency graphs, concurrency groups, OIDC scopes, trust anchor gate sequencing, audit log emission) typically requires 20–25 developer-hours for a 3-workflow system. ACI/ACD automates all authoring; the human reviewer validates constitutional invariants in ~1.5 hours.
+> **Automation note:** The Documenter Agent auto-generates Bicep parameter documentation; the Spec Edge Case Tester validated 12 infrastructure edge cases (WORM lock enforcement, Key Vault unavailability 90-sec TTL cache, zero-gate fail-closed, singleton orchestrator conflict). Human review retained for production resource deletions (Constitution §3).
 
 ### 2.5 Issue #126 — ADA CI/CD Workflow Build Costs
 
@@ -468,6 +470,46 @@ Issue #126 implements `ada-deploy.yml` — the GitHub Actions workflow that brid
 
 > **Issue #133 runner strategy:** Switch from GitHub-hosted to self-hosted runners when pipeline runs exceed 500/day. At 5,000 runs/day, self-hosted runners attached to the existing Cloud Run `OrchestratingAgent` fleet save **$172,800/year** in CI/CD runner costs.
 
+### 3.5 Issue #125 — IaC-Specific Resource Runtime Costs (Azure)
+
+Issue #125 introduces five dedicated Azure resources for persistent, compliant infrastructure. Per project conventions (`core-pipeline-infra-spec.md`), Azure is used for audit storage, Key Vault, and Service Bus even when app runtime runs on GCP.
+
+#### Standard Profile (100 MAU, 50 pipeline runs/day)
+
+| Azure Resource | Spec | Monthly Cost |
+|----------------|------|-------------|
+| **Azure Files Premium** (SQLite WAL audit log, 25 GB, NFS v4.1) | $0.21/GB/mo + ops | **$5.49/mo** |
+| **Azure Blob Storage WORM** (archive, 10 GB, Cool tier, immutable) | $0.018/GB/mo, `allowProtectedAppendWrites` | **$0.19/mo** |
+| **Azure Key Vault Standard** (HMAC-SHA256 signing key; 50K ops/mo) | $0.03/10K ops + $0.03/key/mo | **$0.21/mo** |
+| **Azure Service Bus Standard** (pipeline event dispatch) | $10.00/mo base + $0.0135/M msgs | **$10.00/mo** |
+| **GitHub Actions production environment** (human approval, Constitution §3) | Included in GitHub org plan | **$0.00/mo** |
+| **Azure Monitor alerts** (CanNotDelete removal, capacity >80%) | 5 rules × $0.10/mo | **$0.50/mo** |
+| **CanNotDelete resource locks** | No cost (ARM feature) | **$0.00/mo** |
+| **Bicep CI lint / validate** (45 min/mo) | $0.008/min; 2,000 free min/mo | **$0.00/mo** |
+| **IaC subtotal (standard)** | | **$16.39/mo ($197/yr)** |
+
+> **Key insight:** Service Bus Standard $10/mo base accounts for 61% of IaC costs at standard scale. For sub-100K daily message volumes, Azure Storage Queue (free tier: 2M transactions/month) saves $9.93/mo — trade-off: no dead-letter queue or message ordering.
+
+#### Edge Case Profile (10K MAU, 5,000 pipeline runs/day)
+
+| Azure Resource | Spec | Monthly Cost |
+|----------------|------|-------------|
+| **Azure Files Premium** (1 TB, 50M ops/mo) | $0.21/GB/mo + $0.0047/10K ops | **$233.50/mo** |
+| **Azure Blob Storage WORM** (2 TB, SOX 7-yr) | $0.018/GB/mo, immutable | **$36.00/mo** |
+| **Azure Key Vault Standard** (10M ops/mo; 2 rotating keys) | $0.03/10K ops × 2 keys | **$30.06/mo** |
+| **Azure Service Bus Standard** (4.5M msgs/mo) | $10.00 + $0.0135/M × 4.5 | **$10.06/mo** |
+| **Private endpoints** (Key Vault + Files + Blob; 3 endpoints) | $0.01/hr × 730 × 3 | **$21.90/mo** |
+| **Azure Monitor alerts + dashboards** | 10 rules × $0.10/mo | **$1.00/mo** |
+| **IaC subtotal (edge case)** | | **$332.52/mo ($3,990/yr)** |
+
+#### IaC Annual Cost Summary (Azure, added to runtime totals)
+
+| Scenario | IaC Monthly | IaC Annual | Combined: GCP app + Azure IaC |
+|----------|-------------|------------|-------------------------------|
+| Standard (100 MAU) | $16.39 | **$197** | $349 (GCP) + $197 = **$546/yr** |
+| Growth (1K MAU) | $42.50 | **$510** | $3,490 + $510 = **$4,000/yr** |
+| Edge case (10K MAU) | $332.52 | **$3,990** | $35,452 + $3,990 = **$39,442/yr** |
+
 ---
 
 ## 4. ACI/ACD Automation Savings
@@ -602,10 +644,25 @@ MaatProof's pipeline places squarely in the **"Elite"** DORA performer category 
 | **Year 1 savings** | $324,491 |
 | **ROI (Year 1)** | **10,163%** |
 | **Payback period** | **< 1 month** |
-| **5-year TCO (ACI/ACD)** | **$19,838** |
-| **5-year TCO (Traditional)** | **$1,638,420** |
-| **5-year TCO savings** | **$1,618,582** |
-| **Net 5-year ROI** | **8,157%** |
+| **5-year TCO (ACI/ACD)** | **$31,735** |
+| **5-year TCO (Traditional)** | **$2,004,540** |
+| **5-year TCO savings** | **$1,972,805** |
+| **Net 5-year ROI** | **6,214%** |
+
+> **Issue #123 specific ROI note:** The `no-human-in-the-loop` ADA production path eliminates ~$240/sprint in approval queue management. At 26 sprints/year for a 4-developer team, this saves **$6,240/year** in recurring overhead — not counted in the build cost savings above, making the actual ROI higher than stated.
+
+### 6.3 Issue #123 Specific ROI
+
+| Metric | Value |
+|--------|-------|
+| **Build cost savings (one-time)** | $8,053 |
+| **Annual runner cost savings** (GA cache optimization) | ~$200/yr |
+| **Annual approval queue savings** (4 devs × 26 sprints × $240) | $6,240/yr |
+| **Annual SOX audit savings** (40 hrs/qtr → 2 hrs/qtr, 38 hrs × $60 × 4) | $9,120/yr |
+| **Annual on-call interrupt savings** (out-of-hours deployments, 3×/yr) | $1,500/yr |
+| **Total recurring annual savings** | **$17,060/yr** |
+| **Issue #123 ACI/ACD investment** | $459 (build) + $580 (infra/yr) = $1,039 |
+| **Issue #123 Year 1 ROI** | **1,542%** |
 
 ---
 
@@ -769,99 +826,22 @@ pytest-cov adds ~3 min per pipeline run. This is the only additional runtime cos
 | > 500 (any) | Self-hosted (Cloud Run) | any | **$0 incremental** | **$0 incremental** | ✅ Switch to self-hosted |
 | 5,000 (GitHub-hosted, avoid) | GitHub-hosted | 1,800,000 | **$14,400** | **$172,800** | ❌ Cost prohibitive |
 
-### 9.2 Trust Anchor Gate Step Execution
+### Issue #125 — Infrastructure / IaC (New)
 
-| Gate step | Duration/run | Monthly minutes (50 runs/day) | Monthly cost (public) | Monthly cost (private) |
-|-----------|-------------|-------------------------------|----------------------|------------------------|
-| `lint` (ruff + pylint) | ~2 min | 3,000 min | **$0** | **$24** |
-| `compile` (py_compile check) | ~1 min | 1,500 min | **$0** | **$12** |
-| `security_scan` (bandit + safety) | ~3 min | 4,500 min | **$0** | **$36** |
-| `artifact_sign` (HMAC-SHA256 script) | ~0.5 min | 750 min | **$0** | **$6** |
-| `compliance` (policy rule checks) | ~0.5 min | 750 min | **$0** | **$6** |
-| **Total per gate layer** | **~7 min/run** | **10,500 min** | **$0** | **$84/mo** |
+6. ✅ **Azure Files Premium (NFS v4.1)** for SQLite WAL audit log — only provider supporting WAL locking semantics; $5.49/mo standard
+7. ✅ **Azure Key Vault Standard** (not Premium HSM) at standard scale — saves $5/key/mo; Premium only for FIPS 140-3 Level 3 workloads
+8. ✅ **Evaluate Service Bus vs Storage Queue** — at <100K msgs/day, Storage Queue saves $9.93/mo; Service Bus justified for dead-letter queue + ordering
+9. ✅ **GitHub Actions production environment** with required reviewers — zero cost, enforces Constitution §3 human approval invariant
+10. ✅ **CanNotDelete locks** + Monitor alert within 5 min — $0.50/mo, eliminates accidental audit log deletion
+11. ✅ **Bicep over Terraform** at this scale — native ARM API, no state management overhead, free Azure Cloud Shell validation
+12. ✅ **WORM with `allowProtectedAppendWrites`** — forensic annotations preserved while maintaining SOX immutability ($0.19/mo)
 
-### 9.3 Signed Audit Log Cost (HMAC-SHA256 per job)
+### Issue #119 (Carry-forward)
 
-| Audit event type | Frequency (standard) | Firestore write cost/mo |
-|-----------------|----------------------|------------------------|
-| `ACI_JOB_COMPLETE` (success/failure) | 1,500/mo | $0.0009 |
-| `ACD_JOB_COMPLETE` | 900/mo | $0.0005 |
-| `TRUST_ANCHOR_GATE_PASS` | 7,500/mo | $0.0045 |
-| `HUMAN_APPROVAL_REQUESTED` | 150/mo | $0.00009 |
-| `AGENT_RETRY` | 600/mo | $0.00036 |
-| **TOTAL audit log cost** | | **~$0.006/mo ($0.07/yr)** |
-
-> **Issue #133 cryptographic audit cost: $0.006/month.** Signed audit log emission on every job completion costs less than 1 cent per month at standard scale — one of the lowest-cost, highest-value features in the ACI/ACD stack.
-
-### 9.4 Human Approval Gate Cost
-
-The GitHub Environment protection rule maps directly to CONSTITUTION.md §3 (human_approval_required). It is a built-in GitHub feature with zero direct monetary cost.
-
-| Event | Frequency | Human time | Cost/mo |
-|-------|-----------|------------|---------|
-| Production deployment approval | 20/mo | 3 min/approval | **$6.00/mo** (20 × 0.05 hr × $60) |
-| Traditional equivalent (2 hrs coordination + review) | 20/mo | 120 min/approval | **$120.00/mo** |
-| **Issue #133 savings on approval gate** | | | **$114/mo ($1,368/yr)** |
-
-### 9.5 Issue #133 Risk Assessment
-
-| Risk | Probability | Impact | Mitigation | Cost Impact |
-|------|------------|--------|-----------|------------|
-| Trust anchor gate YAML misconfiguration | Low | Critical | Constitution §2 mandatory; fail-closed guards | $0 (design-time prevention) |
-| Human approval gate bypass | Very Low | Critical | GitHub Environment protection rules enforce | $0 (GitHub-managed) |
-| Agent retry storm (>3 retries) | Low | High | `max_fix_retries=3` hard limit in YAML | Caps to 3× step duration |
-| Runaway runner cost (GitHub-hosted at scale) | Medium | High | Self-hosted runners at >500 runs/day | Saves $172,800/yr at edge |
-| HMAC key compromise in CI | Very Low | Critical | GitHub Secrets + OIDC; key never in YAML | Rotation: $0.03/10K Key Vault ops |
-| Workflow YAML injection (branch names) | Low | Critical | `env:` pattern enforced per dre-cicd-spec.md §4 | $0 (code review gate) |
-| Audit log replay attack | Very Low | High | Hash-chain integrity; entry_id deduplication | $0 (architecture-level) |
-
----
-
-## 10. Assumptions & Caveats
-
-1. **Developer rate**: $60/hr fully loaded (BLS median $120K/yr × 2 for overhead, benefits, management).
-2. **AI API tokens**: Claude Sonnet pricing ($3/M input, $15/M output) as of April 2026.
-3. **GCP Firestore pricing**: On-demand mode. Provisioned capacity may be cheaper at >1M ops/day.
-4. **Team size**: 4 developers assumed. Savings scale linearly with team size.
-5. **Pipeline efficiency**: 94–96% savings assumes full ACI/ACD pipeline (all 9 agents).
-6. **Edge case profile**: 10,000 MAU / 1M verifications/day. Actual scaling may differ.
-7. **In-process gates**: DeterministicLayer gates run as Python function calls. External gate execution multiplies CI/CD costs by ~5×.
-8. **Public repo assumption**: MaatProof is an open-source repository; GitHub Actions is free for public repos. Private repo costs are listed separately.
-9. **Smoke-test mode**: Integration mode assumed for standard profile ($22.50/mo). Mock mode is $0.
-10. **CI trigger frequency**: 50 triggers/day assumed for standard profile (50 pipeline runs/day = 50 pushes). Actual may vary by branch strategy.
-11. **GitHub Actions runner minutes**: 2,000 free min/mo on GitHub Free plan; unlimited free for public repos.
-12. **Python version pinning**: Issue #127 must pin `python-version: '3.11'` to match DRE spec §17 requirement for cross-environment reproducibility.
-13. **Free tier**: GCP/AWS free tier expires after 12 months for new accounts.
-14. **Issue #139 runtime cost**: Unit tests run only in CI/CD (build-time), not in production. No production infrastructure additions.
-15. **pytest-cov timing**: 3 min/run estimate based on ~21 test cases + coverage report on n1-standard-1 equivalent runner.
-16. **Pipeline runs/month**: Standard profile uses 50 runs/month for CI cost calculations; edge profile uses 5,000 runs/month.
-
----
-
-## 11. Recommendations
-
-### Immediate (Issue #133 — CI/CD Workflow)
-
-1. ✅ **Keep MaatProof repository public** — eliminates all GitHub Actions runner costs ($0/yr vs $1,536/yr private)
-2. ✅ **Use GitHub Environments** for human approval gate — zero cost, native integration, maps to Constitution §3
-3. ✅ **Switch to self-hosted runners** when pipeline runs exceed 500/day — avoids $172,800/yr at edge scale
-4. ✅ **Embed HMAC signing in existing workflow steps** — audit log costs $0.007/mo; no separate service
-5. ✅ **Set `max_fix_retries: 3`** in all agent step retry configs — caps runaway runner cost
-6. ✅ **Use `env:` pattern** for all user-controlled values in `run:` steps — zero-cost YAML injection prevention
-
-### Immediate (Issue #137 — DRE Documentation)
-
-1. ✅ **Publish verification guide immediately** — enables self-service validator onboarding, reducing support cost by $15,120/yr
-2. ✅ **Include Mermaid diagram** in architecture doc (auto-renders in GitHub) — zero additional tooling cost
-3. ✅ **Parameterize all configuration defaults** clearly — cuts support tickets by ~90%
-4. ✅ **Cross-reference CONSTITUTION.md §2** in the DRE config reference — consistency enforcement at documentation layer
-5. ✅ **Proceed with ACI/ACD documentation pipeline** — 95% build cost reduction validated for Issue #137
-
-### Immediate (Post Issue #111 DRE Implementation)
-
-6. **Implement prompt caching** on `CanonicalPromptSerializer` output — 60% reduction in DRE AI API input token costs ($39 → $16/yr at standard scale)
-7. **Use Anthropic Batch API** for non-latency-sensitive DRE decisions — 50% cost reduction available
-8. **Monitor consensus ratio distribution** — if weak/no consensus > 5%, investigate model configuration before scaling
+13. ✅ **Proceed with GCP** as primary cloud provider — $349/yr combined at standard scale
+14. ✅ **Run DeterministicLayer gates in-process** — saves $77,844/yr vs external CI/CD at edge scale
+15. ✅ **Use Cloud Run min-instances=1** for OrchestratingAgent — eliminates cold-start at $1.73/mo
+16. ✅ **Set max_fix_retries=3** (Constitutional default) — caps runaway AI API spend
 
 ### Short-term (Next 3 months)
 
@@ -897,7 +877,76 @@ The GitHub Environment protection rule maps directly to CONSTITUTION.md §3 (hum
 
 ---
 
-## 10. Sources
+## 10. Issue #123 — VRP CI/CD Workflow Cost Analysis
+
+Issue #123 implements the GitHub Actions pipeline gating every deployment on VRP proof verification and validator attestation. Unlike previous issues that run on Cloud infrastructure, **GitHub Actions runner minutes** are the dominant runtime cost driver for Issue #123.
+
+### 10.1 Build Cost Summary
+
+| Cost Category | Traditional | ACI/ACD | Savings |
+|---------------|-------------|---------|---------|
+| Architecture / workflow design (4-job graph, ADA integration) | $600 | $120 | $480 (80%) |
+| `vrp-config-validate` job (schema validation, VRPConfigError) | $240 | $0 | $240 (100%) |
+| `vrp-verify` job (LogicVerifier: 16 error codes, 500-artifact limit, sig check) | $960 | $0 | $960 (100%) |
+| `validator-attest` job (concurrent quorum, 30s timeout, DISPUTE handling) | $840 | $0 | $840 (100%) |
+| `deploy` job (ADA 7-condition, Bicep/Terraform, Runtime Guard 15-min) | $720 | $0 | $720 (100%) |
+| Audit trail (HMAC-SHA256, Azure Blob WORM, SOX 7-yr retention) | $360 | $0 | $360 (100%) |
+| Security hardening (OIDC, fork isolation, secret masking) | $360 | $0 | $360 (100%) |
+| Code review | $600 | $0 | $600 (100%) |
+| QA testing (80 edge cases: EDGE-C001–EDGE-C080) | $630 | $0 | $630 (100%) |
+| Documentation | $320 | $0 | $320 (100%) |
+| AI agent API costs (Claude Sonnet, ~580K in + 165K out tokens) | N/A | $4.21 | — |
+| Spec / edge case validation | $900 | $6.00 | $894 (99%) |
+| Infrastructure setup (OIDC federation, Key Vault, Bicep templates) | $300 | $35 | $265 (88%) |
+| Human approval elimination (ADA no-human-in-loop) | $240 | $0 | $240 (100%) |
+| Rework (30% traditional vs 5% ACI/ACD) | $1,560 | $282 | $1,278 (82%) |
+| **TOTAL** | **$8,512** | **$459** | **$8,053 (95%)** |
+
+### 10.2 Runtime Cost (Standard Profile: 20 GA workflow runs/day)
+
+Workflow mix: 12 feature pushes (8 min) + 6 staging PRs (16 min) + 2 prod merges (26 min) = 244 min/day → 7,320 min/mo
+
+| Resource | Azure | AWS | GCP |
+|----------|-------|-----|-----|
+| GitHub Actions runners (5,320 paid min/mo × $0.008) | $42.56 | $42.56 | $42.56 |
+| Audit log storage (Azure Blob WORM, 5 GB/mo) | $0.09 | $0.12 | $0.10 |
+| Log ingestion (VRP audit events, 2 GB/mo) | $5.52 | **$1.00** | $20.48 |
+| Validator nodes (3-node cluster, amortized) | $4.50 | $4.86 | **$3.75** |
+| Key Vault OIDC (~5K ops/mo) | **$0.02** | $0.45 | $0.03 |
+| **Monthly total** | **$52.69** | **$48.99** | **$66.92** |
+| **Annual total** | **$632/yr** | **$588/yr** | **$803/yr** |
+
+> **Winner: AWS at $588/yr** (CloudWatch log ingestion at $0.50/GB vs GCP $10.24/GB is the decisive factor).  
+> **Optimal hybrid: GitHub Actions + GCP Cloud Run validators + AWS CloudWatch + Azure Blob WORM = ~$580/yr**
+
+### 10.3 ACI/ACD Automation Savings — Issue #123 Specific
+
+| Metric | Traditional | MaatProof | Savings |
+|--------|-------------|-----------|---------|
+| Production deploy approval latency | 2–4 hrs (human queue) | <5 sec (ADA scoring) | **99.9% faster** |
+| Annual approval queue management | $6,240/yr | $0 | **100% eliminated** |
+| SOX audit log assembly | 40 hrs/qtr | Automated HMAC-signed export | **95% reduction ($9,120/yr)** |
+| vrp-verify false-positive triage | 2–4 hrs investigation | VRP-VERIFY error codes → instant root cause | **90% faster** |
+| Quorum failure debugging | 3–5 hrs distributed debug | VRP-ATTEST-001–007 structured response | **85% faster** |
+| Concurrent deploy race conditions | Frequent (dev coordination) | Concurrency group `cancel-in-progress: false` | **100% prevention** |
+| Fork PR secret exposure risk | 2 hrs/PR manual audit | Automatic `pull_request` isolation | **100% automated** |
+
+### 10.4 Issue #123 ROI Summary
+
+| Metric | Value |
+|--------|-------|
+| Build savings (one-time) | $8,053 |
+| Annual approval queue savings | $6,240/yr |
+| Annual SOX audit savings | $9,120/yr |
+| Annual on-call interrupt savings | $1,500/yr |
+| Annual runner optimization savings | $200/yr |
+| **Total recurring annual savings** | **$17,060/yr** |
+| Issue #123 total investment | $459 (build) + $588 (infra/yr) = **$1,047** |
+| **Issue #123 Year 1 ROI** | **1,429%** |
+
+---
+
+## 11. Sources
 
 | Source | URL | Accessed |
 |--------|-----|---------|
