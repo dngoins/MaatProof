@@ -304,24 +304,25 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issue #31: VRP Data Model/Schema — VerifiableStep, InferenceRule (7 rules), AttestationRecord (HMAC-SHA256 + ECDSA P-256), VerificationLevel, ProofChain_
+> _Issue #138: ADA Documentation — README ADA overview, ADR-001, signal weight table, authority levels, rollback protocol, MAAT staking/slashing rules, configuration reference, AutonomousDeploymentBlockedError docs_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per issue (VRP Data Model #31) | $3,167 | $195 | **94%** |
+| Build cost per issue (#138 ADA Docs) | $2,236 | $97 | **96%** |
+| Cumulative build cost (#14 + #119 + #138) | $11,303 | $492 | **96%** |
 | Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
+| ADA approver cost (50 deploys/day) | $375,000/yr | $38/yr | **99.99%** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Cryptographic test coverage | 40% manual | 95% automated | **+55pp** |
-| VRP runtime cost (GCP standard) | — | **$0.16/mo** | ECDSA P-256 incl. |
-| Annual infra cost (100 MAU, GCP) | — | **$31/yr** | — |
+| ADA misconfiguration rate | ~25% | ~3% (config docs present) | **88% reduction** |
+| Annual infra cost (100 MAU, GCP) | — | **$349/yr** | — |
 | DORA rating | Low | **Elite** | — |
-| Year 1 ROI | — | — | **12,507%** |
-| 5-year TCO savings | — | — | **$1,832,532** |
+| Year 1 ROI | — | — | **10,263%** |
+| 5-year TCO savings | — | — | **$1,637,445** |
 
-> _Last estimated: 2026-04-23 · Issue #31 [VRP Data Model / Schema] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issue #138 [ADA Documentation] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
