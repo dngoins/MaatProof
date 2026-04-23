@@ -304,32 +304,34 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issues #14 · #119 · #137 · #133: Data Model · Core Pipeline · DRE Documentation · CI/CD Workflow (ACI/ACD Workflows, Trust Anchor Gates, Human Approval Gate, Signed Audit Log)_
+> _Updated: Issue #142 [ADA Validation & Sign-off] — Final quality gate for the full ADA feature (9 deliverables: #99–#142). Previous: Issues #14 · #119 · #137 · #133._
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
+| Build cost — ADA Sign-off (#142) | $2,729 | $102 | **96%** |
 | Build cost — CI/CD Workflow (#133) | $4,540 | $167 | **96%** |
 | Build cost — DRE Docs (#137) | $972 | $48 | **95%** |
 | Build cost — Core Pipeline (#119) | $6,741 | $247 | **96%** |
 | Build cost — Data Model (#14) | $2,326 | $148 | **94%** |
-| Combined build cost (#14+#119+#137+#133) | $14,579 | $594 | **96%** |
+| ADA full feature (9 issues #99–#142) | $28,095 | $1,566 | **94%** |
+| **Combined build cost (all tracked issues)** | **~$42,674** | **~$2,160** | **~95%** |
 | Annual developer savings | — | $198,720 | **3,312 hrs/yr** |
-| Annual CI/CD cost (GCP, public repo, 100 MAU) | — | **$392/yr** | GitHub Actions free |
+| Annual runtime (GCP standard + ADA) | — | **$391/yr** | — |
+| Annual incident prevention value (ADA) | $209,952 | **$0 extra** | **100% automated** |
 | GitHub Actions runtime (public repo) | — | **$0/yr** | Unlimited free minutes |
-| Self-hosted runners vs GitHub-hosted (edge) | — | — | **$172,800/yr saved** |
-| Signed audit log cost (HMAC-SHA256) | — | **$0.07/yr** | Per-job Firestore writes |
-| Human approval gate (GitHub Environments) | — | **$72/yr** | 3 min/approval click |
-| DRE multi-model consensus premium | — | **+$3.24/mo** | 3-model quorum |
+| ADA runtime addition | — | **+$46/yr** | Full autonomous deploy authority |
+| Mean time to recovery (ADA auto-rollback) | 4 hours | **60 seconds** | **99.6% faster** |
+| Human approvals required (fully-verified) | Every deploy | **0** | **100% eliminated** |
+| MAAT staking/slashing enforcement | Manual | **Automated** | **100% coverage** |
 | Trust anchor gate bypass prevention | Possible | **Impossible** | 100% elimination |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
-| Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| DORA rating | Low | **Elite** | — |
-| Year 1 ROI | — | — | **10,659%** |
-| 5-year TCO savings | — | — | **$1,746,116** |
+| DORA rating | Low | **Elite** | Top 10% globally |
+| ADA standalone Year 1 ROI | — | — | **~13,006%** |
+| 5-year TCO savings (with ADA incident prevention) | — | — | **~$2,717,142** |
 
-> _Last estimated: 2026-04-23 · Issue #133 [CI/CD Workflow] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Run #7 · Issue #142 [ADA Validation & Sign-off] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
