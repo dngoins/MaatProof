@@ -10,33 +10,69 @@
       --bg: #0d1117;
       --surface: #161b22;
       --border: #30363d;
+      --accent: #58a6ff;
+      --accent2: #3fb950;
+      --accent3: #ff7b72;
+      --accent4: #e3b341;
+      --accent5: #bc8cff;
       --text: #c9d1d9;
       --muted: #8b949e;
-      --accent: #58a6ff;
-      --green: #3fb950;
-      --yellow: #d29922;
-      --red: #f85149;
-      --purple: #bc8cff;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       line-height: 1.6;
-      padding: 2rem;
     }
-    h1 { font-size: 2rem; color: var(--accent); margin-bottom: 0.25rem; }
-    h2 { font-size: 1.25rem; color: var(--accent); margin: 2rem 0 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
-    h3 { font-size: 1rem; color: var(--muted); margin-bottom: 0.75rem; }
-    .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 2rem; }
-    .badge { display: inline-block; background: var(--green); color: #000; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; margin-left: 0.5rem; }
-    .badge-blue { display: inline-block; background: var(--accent); color: #000; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; margin-left: 0.5rem; }
-    .section-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--purple); font-weight: 700; margin-bottom: 0.25rem; }
-    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-    .kpi-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
-    .kpi-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-    .kpi-card .value { font-size: 1.75rem; font-weight: 700; color: var(--green); margin: 0.25rem 0; }
+    header {
+      background: linear-gradient(135deg, #1a2332 0%, #0d1117 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 2rem;
+      text-align: center;
+    }
+    header h1 { font-size: 2rem; color: var(--accent); margin-bottom: 0.4rem; }
+    header p { color: var(--muted); font-size: 0.9rem; }
+    header .badge {
+      display: inline-block;
+      background: var(--accent2);
+      color: #0d1117;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 2px 10px;
+      border-radius: 12px;
+      margin: 0.25rem;
+    }
+    header .badge.orange { background: var(--accent4); }
+    header .badge.blue { background: var(--accent); }
+    header .badge.purple { background: var(--accent5); }
+    .container { max-width: 1400px; margin: 0 auto; padding: 2rem; }
+    .section-title {
+      font-size: 1.3rem;
+      color: var(--accent);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-bottom: 1.5rem;
+      margin-top: 2.5rem;
+    }
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+    .kpi-card:hover { border-color: var(--accent); }
+    .kpi-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
+    .kpi-card .value { font-size: 1.8rem; font-weight: 700; color: var(--accent2); }
+    .kpi-card .value.red { color: var(--accent3); }
     .kpi-card .value.blue { color: var(--accent); }
     .kpi-card .value.yellow { color: var(--yellow); }
     .kpi-card .value.red { color: var(--red); }
@@ -148,19 +184,9 @@
       <div class="sub">vs $1.77M traditional</div>
     </div>
     <div class="kpi-card">
-      <div class="label">Deploy Frequency</div>
-      <div class="value yellow">70×</div>
-      <div class="sub">1/week → 10/day (DORA Elite)</div>
-    </div>
-    <div class="kpi-card">
-      <div class="label">Change Failure Rate</div>
-      <div class="value">↓80%</div>
-      <div class="sub">15% → 3% defect escape</div>
-    </div>
-    <div class="kpi-card">
-      <div class="label">MTTR</div>
-      <div class="value">↓94%</div>
-      <div class="sub">4 hrs → 15 min recovery</div>
+      <div class="label">DORA Performance</div>
+      <div class="value">Elite</div>
+      <div class="sub">Top 10% globally</div>
     </div>
   </div>
 
@@ -208,8 +234,255 @@
     </div>
   </div>
 
-  <!-- Financial Projections -->
-  <h2>Financial Projections</h2>
+  <div class="section-title">&#x1F4CB; Issue-by-Issue Build Cost Summary</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Issue</th>
+          <th>Type</th>
+          <th>Traditional</th>
+          <th>ACI/ACD</th>
+          <th>Savings</th>
+          <th>Savings %</th>
+          <th>Runtime/yr (GCP)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>#14 &mdash; Data Model <span class="issue-tag prev">PREV</span></td>
+          <td>Implementation</td>
+          <td class="red">$2,326</td>
+          <td class="green">$148</td>
+          <td class="green">$2,178</td>
+          <td class="gold">94%</td>
+          <td>$25/yr</td>
+        </tr>
+        <tr>
+          <td>#119 &mdash; Core Pipeline <span class="issue-tag prev">PREV</span></td>
+          <td>Implementation</td>
+          <td class="red">$6,741</td>
+          <td class="green">$247</td>
+          <td class="green">$6,494</td>
+          <td class="gold">96%</td>
+          <td>$324/yr (AI API)</td>
+        </tr>
+        <tr style="background: #1a2240;">
+          <td><strong>#136 &mdash; VRP Documentation</strong> <span class="issue-tag new">NEW</span></td>
+          <td>Documentation</td>
+          <td class="red">$1,920</td>
+          <td class="green">$91</td>
+          <td class="green">$1,829</td>
+          <td class="gold">95%</td>
+          <td class="green"><strong>$0/yr</strong></td>
+        </tr>
+        <tr>
+          <td>Infrastructure / IaC</td>
+          <td>IaC</td>
+          <td class="red">$3,600</td>
+          <td class="green">$240</td>
+          <td class="green">$3,360</td>
+          <td class="gold">93%</td>
+          <td>TBD</td>
+        </tr>
+        <tr>
+          <td>Configuration</td>
+          <td>Config</td>
+          <td class="red">$1,440</td>
+          <td class="green">$96</td>
+          <td class="green">$1,344</td>
+          <td class="gold">93%</td>
+          <td>TBD</td>
+        </tr>
+        <tr>
+          <td>Unit Tests</td>
+          <td>Testing</td>
+          <td class="red">$2,880</td>
+          <td class="green">$192</td>
+          <td class="green">$2,688</td>
+          <td class="gold">93%</td>
+          <td>TBD</td>
+        </tr>
+        <tr>
+          <td>Integration Tests</td>
+          <td>Testing</td>
+          <td class="red">$3,600</td>
+          <td class="green">$240</td>
+          <td class="green">$3,360</td>
+          <td class="gold">93%</td>
+          <td>TBD</td>
+        </tr>
+        <tr>
+          <td>CI/CD Setup</td>
+          <td>DevOps</td>
+          <td class="red">$2,400</td>
+          <td class="green">$160</td>
+          <td class="green">$2,240</td>
+          <td class="gold">93%</td>
+          <td>TBD</td>
+        </tr>
+        <tr>
+          <td>Validation &amp; Sign-off</td>
+          <td>QA</td>
+          <td class="red">$2,400</td>
+          <td class="green">$160</td>
+          <td class="green">$2,240</td>
+          <td class="gold">93%</td>
+          <td>TBD</td>
+        </tr>
+        <tr style="font-weight: 700;">
+          <td>CUMULATIVE (3 issues)</td>
+          <td>&mdash;</td>
+          <td class="red">$10,987</td>
+          <td class="green">$486</td>
+          <td class="green">$10,501</td>
+          <td class="gold">96%</td>
+          <td class="blue">$349/yr</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title">&#x1F680; DORA Elite Performance Metrics</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>DORA Metric</th>
+          <th>Traditional</th>
+          <th>MaatProof ACI/ACD</th>
+          <th>Improvement</th>
+          <th>DORA Tier</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Deployment Frequency</td>
+          <td class="red">1&times;/week</td>
+          <td class="green">10&times;/day</td>
+          <td class="gold">70&times; more frequent</td>
+          <td class="green">Elite</td>
+        </tr>
+        <tr>
+          <td>Lead Time for Changes</td>
+          <td class="red">5 days</td>
+          <td class="green">2 hours</td>
+          <td class="gold">60&times; faster</td>
+          <td class="green">Elite</td>
+        </tr>
+        <tr>
+          <td>Change Failure Rate</td>
+          <td class="red">15%</td>
+          <td class="green">3%</td>
+          <td class="gold">80% reduction</td>
+          <td class="green">Elite</td>
+        </tr>
+        <tr>
+          <td>Mean Time to Recovery</td>
+          <td class="red">4 hours</td>
+          <td class="green">15 minutes</td>
+          <td class="gold">94% faster</td>
+          <td class="green">Elite</td>
+        </tr>
+        <tr>
+          <td>Documentation Staleness</td>
+          <td class="red">14 days avg</td>
+          <td class="green">0 days</td>
+          <td class="gold">100% improvement</td>
+          <td class="green">Elite</td>
+        </tr>
+        <tr>
+          <td>New Engineer Onboarding (VRP)</td>
+          <td class="red">3 days</td>
+          <td class="green">&lt; 1 day</td>
+          <td class="gold">67% faster (Issue #136)</td>
+          <td class="green">Elite</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title">&#x1F310; Cloud Provider Scorecard</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Azure</th>
+          <th>AWS</th>
+          <th>GCP</th>
+          <th>Winner</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Serverless (free tier)</td>
+          <td>1M/mo</td>
+          <td>1M/mo</td>
+          <td>2M/mo</td>
+          <td class="green">GCP</td>
+        </tr>
+        <tr>
+          <td>Document DB (low write vol)</td>
+          <td>$8.20/mo</td>
+          <td>$0.26/mo</td>
+          <td>$0.11/mo</td>
+          <td class="green">GCP Firestore</td>
+        </tr>
+        <tr>
+          <td>Container hosting</td>
+          <td>$2.08/mo</td>
+          <td>$2.23/mo</td>
+          <td>$1.73/mo</td>
+          <td class="green">GCP Cloud Run</td>
+        </tr>
+        <tr>
+          <td>Log ingestion</td>
+          <td>$2.76/GB</td>
+          <td>$0.50/GB</td>
+          <td>$10.24/GB</td>
+          <td class="green">AWS CloudWatch</td>
+        </tr>
+        <tr>
+          <td>Secrets management</td>
+          <td>$0.03/10K ops</td>
+          <td>$0.40/secret/mo</td>
+          <td>$0.06/secret/mo</td>
+          <td class="green">Azure Key Vault</td>
+        </tr>
+        <tr>
+          <td>CI/CD free minutes</td>
+          <td>2,000/mo</td>
+          <td>100/mo</td>
+          <td>3,600/mo</td>
+          <td class="green">GCP Cloud Build</td>
+        </tr>
+        <tr>
+          <td>Documentation hosting</td>
+          <td>$9/mo (Static Web Apps)</td>
+          <td>$1-3/mo (S3+CF)</td>
+          <td>$0.026/GB (Firebase)</td>
+          <td class="green">GitHub Pages ($0)</td>
+        </tr>
+        <tr>
+          <td>Networking egress</td>
+          <td>$0.087/GB</td>
+          <td>$0.090/GB</td>
+          <td>$0.085/GB</td>
+          <td class="green">GCP</td>
+        </tr>
+        <tr style="font-weight: 700;">
+          <td>Overall Recommendation</td>
+          <td>3rd</td>
+          <td>2nd (logs)</td>
+          <td class="green">1st (Primary)</td>
+          <td class="gold">GCP + AWS CloudWatch + GitHub Pages</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title">&#x1F48E; Revenue Potential (SaaS Tiers)</div>
   <div class="chart-grid">
     <div class="chart-card">
       <h3>Monthly Cost Projection (GCP + GitHub Actions Public, by MAU Scale)</h3>
@@ -231,19 +504,10 @@
     <p>All 5 trust anchor gates (lint, compile, security_scan, artifact_sign, compliance) are mandatory GitHub Actions steps. Any misconfiguration allowing bypass violates <strong>CONSTITUTION.md §2</strong>. Cost of enforcement: <strong>$0</strong>. Cost of a gate bypass incident: potentially unlimited. The fail-closed invariant is the cheapest risk mitigation in the pipeline.</p>
   </div>
 
-  <!-- DORA Table -->
-  <h2>DORA Metrics — MaatProof vs Traditional</h2>
-  <table>
-    <thead>
-      <tr><th>Metric</th><th>Traditional</th><th>MaatProof ACI/ACD</th><th>Improvement</th><th>DORA Tier</th></tr>
-    </thead>
-    <tbody>
-      <tr><td>Deployment Frequency</td><td class="lose">1× / week</td><td class="win">10× / day</td><td class="win">70× more frequent</td><td class="win">Elite</td></tr>
-      <tr><td>Lead Time for Changes</td><td class="lose">5 days</td><td class="win">2 hours</td><td class="win">60× faster</td><td class="win">Elite</td></tr>
-      <tr><td>Change Failure Rate</td><td class="lose">15%</td><td class="win">3%</td><td class="win">80% reduction</td><td class="win">Elite</td></tr>
-      <tr><td>Mean Time to Recovery</td><td class="lose">4 hours</td><td class="win">15 minutes</td><td class="win">94% faster</td><td class="win">Elite</td></tr>
-    </tbody>
-  </table>
+<script>
+Chart.defaults.color = '#8b949e';
+Chart.defaults.borderColor = '#30363d';
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
 
   <!-- Issue #133 Improvements -->
   <h2>Issue #133 — CI/CD Workflow Improvements</h2>
@@ -308,10 +572,38 @@
     </p>
   </footer>
 
-  <script>
-    Chart.defaults.color = '#c9d1d9';
-    Chart.defaults.borderColor = '#30363d';
-    Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+new Chart(document.getElementById('issue136Breakdown'), {
+  type: 'doughnut',
+  data: {
+    labels: [
+      'Arch Research ($240)',
+      'README VRP ($120)',
+      'Architecture ADR ($360)',
+      '7 Inference Rules ($320)',
+      'Attestation Format ($120)',
+      'Validator Network ($180)',
+      'Mermaid Diagrams ($120)',
+      'Human Review ($120)',
+      'Re-work ($120)',
+    ],
+    datasets: [{
+      data: [240, 120, 360, 320, 120, 180, 120, 120, 120],
+      backgroundColor: [
+        COLORS.red, COLORS.orange, COLORS.gold, COLORS.purple,
+        COLORS.blue, COLORS.teal, COLORS.green, COLORS.red, COLORS.orange
+      ],
+      borderWidth: 2,
+      borderColor: '#161b22',
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { position: 'right', labels: { color: '#c9d1d9', font: { size: 10 } } },
+      title: { display: true, text: 'Traditional total: $1,920 | ACI/ACD: $91', color: '#8b949e' }
+    }
+  }
+});
 
     // 1. Cloud Standard Bar — All 4 issues combined, public repo
     new Chart(document.getElementById('cloudStandardChart'), {
@@ -333,7 +625,9 @@
           x: { stacked: true, grid: { color: '#30363d' } }
         }
       }
-    });
+    }
+  }
+});
 
     // 2. Runner Strategy Chart
     new Chart(document.getElementById('runnerStrategyChart'), {
