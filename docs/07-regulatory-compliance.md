@@ -149,6 +149,46 @@ graph LR
 
 ---
 
+## ADA Compliance Tiers
+
+<!-- Addresses EDGE-044, EDGE-073, EDGE-074 -->
+
+The Autonomous Deployment Authority (ADA) introduces deployment authority levels that
+must respect regulatory compliance requirements. The following tiers define the maximum
+`DeploymentAuthorityLevel` permitted per environment type:
+
+| Tier | Environments | Max ADA Authority Level | Regulatory Basis |
+|------|-------------|------------------------|-----------------|
+| **Unrestricted** | dev, sandbox | `FULL_AUTONOMOUS` | No regulatory requirements apply |
+| **Standard** | staging, non-regulated production | `FULL_AUTONOMOUS` (requires DAO vote) | Normal ADA operation |
+| **HIPAA** | HIPAA-regulated production | `AUTONOMOUS_WITH_MONITORING` | HIPAA §164.312(a)(2)(i) requires named human accountability for access to ePHI systems |
+| **SOX** | SOX-regulated production | `AUTONOMOUS_WITH_MONITORING` | SOX ITGC change management requires documented human sign-off for production changes |
+| **Critical Infrastructure** | Any critical infrastructure production | `BLOCKED` | Per CONSTITUTION §3; EU AI Act high-risk AI system oversight requirements |
+
+### `AutonomousDeploymentBlockedError` Compliance Classification
+
+When the ADA raises `AutonomousDeploymentBlockedError`, it maps to the following
+compliance controls:
+
+| Framework | Control | Mapping |
+|-----------|---------|---------|
+| SOC 2 Type II | CC6.1 | Logical access controls — blocked access attempt logged |
+| HIPAA | §164.312(a)(2)(i) | Access control — autonomous access denied, human escalation required |
+| SOX | ITGC IT-CC-03 | Change management — change blocked pending human authorisation |
+| EU AI Act | Art. 14 | Human oversight — autonomous action prevented; human review required |
+
+### Human Approval in ADA Context
+
+For environments where ADA is operating below `FULL_AUTONOMOUS` (i.e., `BLOCKED`
+authority level), human approval is still required per CONSTITUTION §3. In this context:
+
+- `AutonomousDeploymentBlockedError` is raised with the deployment score and reason.
+- The pipeline falls back to the standard human-approval flow (human-approval-agent.md).
+- The `HumanApprovalRequiredError` is NOT raised during migration; instead
+  `AutonomousDeploymentBlockedError` carries the blocking reason.
+
+---
+
 ## AI Governance Requirements
 
 As AI governance regulations mature globally (EU AI Act enforcement from 2026, US Executive Orders on AI safety, emerging APAC frameworks), MaatProof provides a **protocol-level compliance layer** rather than a point solution:
