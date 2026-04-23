@@ -935,10 +935,39 @@ MUST accurately reflect Constitution §3 — human approval is opt-in via
 `OrchestratingAgent` docstring has the same issue and will be fixed together. Fix tracked
 in GitHub Issue `[Spec Gap] EDGE-D085`.
 
+---
+
+## §12 — Coverage Requirements and Core Module Definitions
+
+<!-- Addresses EDGE-VS082 -->
+
+The acceptance criteria for MaatProof ACI/ACD validation require **≥ 90% line
+coverage on core modules**. "Core modules" is defined as:
+
+| Module Path | Coverage Requirement |
+|---|---|
+| `maatproof/proof.py` | ≥ 90% |
+| `maatproof/chain.py` | ≥ 90% |
+| `maatproof/orchestrator.py` | ≥ 90% |
+| `maatproof/pipeline.py` | ≥ 90% |
+| `maatproof/layers/deterministic.py` | ≥ 90% |
+| `maatproof/layers/agent.py` | ≥ 90% |
+| `maatproof/exceptions.py` | ≥ 85% |
+
+Coverage measured with:
+```bash
+pytest tests/ -v --cov=maatproof --cov-report=term-missing --cov-fail-under=90
+```
+
+Exclusions: `if TYPE_CHECKING:` blocks, `# pragma: no cover` annotations (require
+team review before adding).
+
 <!-- Addresses EDGE-102, EDGE-106, EDGE-112, EDGE-113, EDGE-115, EDGE-117,
      EDGE-119, EDGE-124, EDGE-126, EDGE-127, EDGE-129, EDGE-132, EDGE-135,
      EDGE-137, EDGE-139, EDGE-140, EDGE-142, EDGE-144, EDGE-146, EDGE-149,
      EDGE-151, EDGE-153, EDGE-154, EDGE-155, EDGE-160, EDGE-162, EDGE-163,
      EDGE-165, EDGE-167, EDGE-168, EDGE-172, EDGE-174, EDGE-175,
      EDGE-139-004, EDGE-139-012, EDGE-139-014, EDGE-139-018, EDGE-139-033,
-     EDGE-139-043, EDGE-139-048, EDGE-139-057, EDGE-139-058, EDGE-139-061 -->
+     EDGE-139-043, EDGE-139-048, EDGE-139-057, EDGE-139-058, EDGE-139-061,
+     EDGE-VS004, EDGE-VS008, EDGE-VS033, EDGE-VS034, EDGE-VS037, EDGE-VS059,
+     EDGE-VS061, EDGE-VS067, EDGE-VS070, EDGE-VS080, EDGE-VS082 -->
