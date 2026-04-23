@@ -157,12 +157,24 @@ pub struct ModelProfile {
 
 | Constraint | Value |
 |---|---|
-| Max temperature (production) | 0.2 |
-| Max temperature (staging) | 0.5 |
+| Max temperature (production) | 0.2 (AVM-wide ceiling) |
+| Max temperature (staging) | 0.5 (AVM-wide ceiling) |
+| **DRE deterministic mode temperature** | **Exactly 0.0** (overrides AVM ceiling — see note) |
 | Required seed (if supported) | Fixed per bundle |
 | Tool outputs | Must be deterministic (no wall-clock, no randomness) |
 | Network access | Disabled during execution |
 | Max execution time | 60 seconds per committee member |
+
+> **DRE Deterministic Mode Note** <!-- Addresses EDGE-DRE-039 -->:
+> The "Max temperature" rows above are the AVM-wide ceiling for general LLM calls.
+> When a committee member executes in **DRE deterministic mode** (as configured by
+> `specs/dre-config-spec.md` and enforced by `DeterminismParams` in
+> `specs/deterministic-reasoning-engine.md`), the temperature MUST be exactly **0.0**
+> in all environments — including production, staging, and development.
+> Setting temperature to any value other than 0.0 causes `DeterminismParams` to raise
+> a `ValueError` and the DRE config loader to raise a `DREConfigError` at startup.
+> The AVM ceiling of 0.2 does not grant permission to use temperature > 0.0 in the
+> DRE committee execution path.
 
 ### Parallel Execution
 
