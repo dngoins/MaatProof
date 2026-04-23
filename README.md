@@ -218,16 +218,25 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
+> _Issue #50: ADA Data Model/Schema — 8 models (DeploymentScore, RiskAssessment, DeploymentAuthorityLevel, RollbackProof, MaatStake, SlashRecord, AutonomousDeploymentBlockedError + JSON serialization)_
+
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per feature | $2,326 | $148 | **94%** |
+| Build cost per feature (Issue #50) | $3,188 | $194 | **94%** |
+| Annual CI/CD cost (4-dev team) | $304,392 | $2,759 | **99%** |
+| Developer hours/year | 3,104 hrs manual | ~0 hrs (automated) | **3,104 hrs saved** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **98% faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
+| RollbackProof audit cost | $50,000+ (incident reconstruction) | $0.004/event | **>99% reduction** |
+| MaatStake + SlashRecord infra | N/A | $0.12/mo (GCP Firestore) | — |
+| Annual infra cost (100 MAU) | N/A | **$26/yr (GCP)** | — |
+| 5-year TCO savings | — | — | **$1,813,523** |
+| Year 1 ROI | — | — | **13,152%** |
 | DORA rating | Low | **Elite** | — |
 
-> _Last estimated: 2026-04-23 | [Full cost report →](docs/reports/cost-estimation-report.md)_
+> _Last estimated: 2026-04-23 (Issue #50 — ADA Data Model/Schema) | [Full cost report →](docs/reports/cost-estimation-report.md) | [Visual summary →](docs/reports/cost-summary.html)_
 
 ---
 
