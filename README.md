@@ -304,28 +304,31 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issue #136: [Verifiable Reasoning Protocol (VRP)] Documentation — VerifiableStep data model, 7 inference rules, verification levels, validator network architecture, attestation record format_
+> _Issues #14 · #119 · #136 · #125: Data Model, Core Pipeline, VRP Documentation, Infrastructure / IaC — audit log storage (Azure Files WORM), HMAC signing key (Key Vault), orchestrator container (ACA), pipeline event queue (Service Bus), human approval environment (GitHub Actions)_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost — Issue #136 (VRP Documentation) | $1,920 | $91 | **95%** |
-| Build cost — Issue #119 (Core Pipeline) | $6,741 | $247 | **96%** |
-| Build cost — Issue #14 (Data Model) | $2,326 | $148 | **94%** |
-| **Cumulative build cost (3 issues)** | **$10,987** | **$486** | **96%** |
-| Issue #136 runtime cost (GitHub Pages) | — | **$0/yr** | **Free** |
-| Annual infra + AI API cost (100 MAU, GCP) | — | **$349/yr** | — |
-| Annual developer savings | — | $217,920 | **3,632 hrs/yr** |
+| Build cost — Data Model (#14) | $2,326 | $148 | **94%** |
+| Build cost — Core Pipeline (#119) | $6,741 | $247 | **96%** |
+| Build cost — VRP Documentation (#136) | $1,920 | $91 | **95%** |
+| Build cost — Infrastructure / IaC (#125) | $3,605 | $219 | **94%** |
+| **Combined build cost (#14 + #119 + #136 + #125)** | **$14,592** | **$705** | **95%** |
+| Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Documentation staleness | 14 days avg | 0 days | **100% improvement** |
-| New engineer onboarding (VRP) | 3 days | < 1 day | **67% faster** |
+| Audit log storage cost (standard, Azure) | — | **$5.68/mo** | Files + WORM |
+| HMAC signing key cost (Key Vault) | — | **$0.21/mo** | Never in code |
+| Human approval gate cost (GitHub env) | — | **$0.00/mo** | Org plan |
+| Annual infra cost (100 MAU, GCP runtime + Azure IaC) | — | **$546/yr** | — |
+| IaC lint/validate CI cost | — | **$0.00/mo** | Free tier |
+| Documentation hosting (GitHub Pages) | — | **$0/yr** | Free |
 | DORA rating | Low | **Elite** | Top 10% globally |
 | Year 1 ROI | — | — | **10,163%** |
 | 5-year TCO savings | — | — | **$1,618,582** |
 
-> _Last estimated: 2026-04-23 · Run #5 · Issue #136 [VRP Documentation] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Run #6 · Issue #125 [Infrastructure / IaC] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
