@@ -118,6 +118,10 @@ its result is recorded as an [`AuditEntry`](maatproof/orchestrator.py) with:
 
 The audit log is the source of truth for compliance reviews.
 
+For the full specification — including SQLite schema, tamper detection algorithm,
+HMAC key management, concurrency handling, retention policy, and compliance
+controls — see [`specs/audit-logging-spec.md`](specs/audit-logging-spec.md).
+
 ---
 
 ## §8 — ADA Is the Default; Full ACD Is the Trajectory
