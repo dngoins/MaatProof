@@ -17,14 +17,18 @@ Deployment Contracts are on-chain smart contracts written in **Solidity** that e
 ```solidity
 struct PolicyRules {
     bool    noFridayDeploys;
-    bool    requireHumanApproval;
-    uint8   minTestCoverage;        // 0-100 (percent)
-    uint8   maxCriticalCves;
-    uint256 minAgentStake;          // in $MAAT (wei)
+    // Human approval is a conditional policy rule, not a blanket mandate.
+    // Set requireHumanApprovalForEnvironments to ["production"] to enforce
+    // human approval only at that stage (whitepaper §3.2:
+    //   rule require_human_approval: stage == PRODUCTION)
+    string[] requireHumanApprovalForEnvironments;
+    uint8   minTestCoverage;        // 0-100 (percent); whitepaper default: >= 80
+    uint8   maxCriticalCves;        // whitepaper default: == 0
+    uint256 minAgentStake;          // in $MAAT (wei); whitepaper example: >= 1000
     uint8   deployWindowStart;      // UTC hour (0-23)
     uint8   deployWindowEnd;        // UTC hour (0-23)
     string[] allowedEnvironments;  // ["staging", "production"]
-    address[] requiredApprovers;   // human approver addresses
+    address[] requiredApprovers;   // human approver addresses (used when requireHumanApprovalForEnvironments applies)
 }
 
 PolicyRules public rules;
@@ -120,9 +124,13 @@ interface IDeployPolicy {
 contract DeployPolicy is IDeployPolicy {
     struct PolicyRules {
         bool    noFridayDeploys;
-        bool    requireHumanApproval;
+        // Human approval is a conditional policy rule, not a blanket mandate.
+    // Set requireHumanApprovalForEnvironments to ["production"] to enforce
+    // human approval only at that stage (whitepaper §3.2:
+    //   rule require_human_approval: stage == PRODUCTION)
+    string[] requireHumanApprovalForEnvironments;
         uint8   minTestCoverage;
-        uint8   maxCriticalCves;
+        uint8   maxCriticalCves;        // whitepaper default: == 0
         uint256 minAgentStake;
         uint8   deployWindowStart;
         uint8   deployWindowEnd;

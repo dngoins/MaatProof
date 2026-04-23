@@ -39,7 +39,7 @@ Just as Ethereum made financial contracts programmable and verifiable, MaatProof
 - Verified by a **Proof-of-Deploy (PoD)** validator network
 - Finalized as an **immutable block** on the MaatProof chain
 
-Human approval is a **first-class protocol primitive** — not a UI button, but a signed cryptographic attestation recorded on-chain.
+The protocol default is: **agent proposes, proof authorizes, chain records, runtime guard can reverse.** Human approval is a policy-configurable gate — one possible rule in a Deployment Contract — not a protocol-level mandate.
 
 ---
 
@@ -48,12 +48,14 @@ Human approval is a **first-class protocol primitive** — not a UI button, but 
 | Problem | MaatProof Solution |
 |---|---|
 | No agent identity | Ed25519 on-chain identity + DID |
-| No reasoning record | AVM trace recording (IPFS-anchored) |
+| No reasoning record | AVM trace recording + VRP (IPFS-anchored) |
+| Non-deterministic LLM reasoning | DRE: N-of-M model committee → canonical DecisionTuple |
 | No tamper-proof policy | Deployment Contracts (Solidity on-chain) |
 | No economic accountability | $MAAT staking + slashing |
-| No human approval record | Signed approval attestation on-chain |
+| Unverifiable deployment decisions | ADA: 7-condition authorization + deterministic risk score |
 | No audit trail | Immutable finalized blocks |
-| Mutable CI logs | Trace hashes anchored to chain |
+| Mutable CI logs | Reasoning Merkle root + artifact hash on-chain |
+| Human approval (when required) | Signed Ed25519 attestation on-chain — a policy gate, not a mandate |
 
 ### Architecture Flow
 
@@ -88,21 +90,23 @@ flowchart BT
         STAKE["$MAAT Stake\n(Economic Accountability)"]
     end
 
-    subgraph L2["Layer 2 — Execution & Trace"]
-        AVM2["AVM — WASM Sandbox\n(Deterministic Execution)"]
-        TRACE["Reasoning Trace\n(SHA-256 hash, IPFS)"]
+    subgraph L2["Layer 2 — Deterministic Reasoning"]
+        DRE["DRE — N-of-M Model Committee\n(canonical DecisionTuple + CommitteeCert)"]
+        VRP["VRP — Verifiable Reasoning Proof\n(Merkleized DAG of typed records)"]
+        AVM2["AVM — WASM Sandbox\n(trace recording + deterministic replay)"]
     end
 
-    subgraph L3["Layer 3 — Policy"]
-        POLICY["Deployment Contracts\n(On-Chain Rules)"]
+    subgraph L3["Layer 3 — Authorization & Policy"]
+        ADA["ADA — 7-Condition Authorization\n(deterministic risk score + rollback proof)"]
+        POLICY["Deployment Contracts\n(On-Chain Policy Rules)"]
     end
 
     subgraph L4["Layer 4 — Consensus"]
-        POD2["Proof-of-Deploy\n(Validator Network)"]
+        POD2["Proof-of-Deploy\n(Validator Network — two-layer:\nDRE committee + validator committee)"]
     end
 
     subgraph L5["Layer 5 — Auditability"]
-        BLOCK["Finalized Block\n(artifact hash, trace hash,\npolicy ref, agent ID, sigs, timestamp)"]
+        BLOCK["Finalized Block\n(artifact hash, reasoning Merkle root,\npolicy ref, agent ID, validator sigs, timestamp)"]
     end
 
     L0 --> L1 --> L2 --> L3 --> L4 --> L5
@@ -112,12 +116,18 @@ flowchart BT
 
 ## Key Concepts
 
-**Deployment Contract** — An on-chain smart contract that encodes deployment policy rules (e.g., "require human approval for production," "block deployments on Fridays," "minimum test coverage 80%"). The direct on-chain analogue of a CI/CD workflow file.
+**Deployment Contract** — An on-chain Solidity smart contract encoding deployment policy rules (e.g., `no_friday_deploys`, `test_coverage_gate ≥ 80`, `no_known_cves`, `agent_stake_minimum ≥ 1000 $MAAT`, and optionally `require_human_approval: stage == PRODUCTION`). The direct on-chain analogue of a CI/CD workflow file — but tamper-proof and validator-attested.
 
-**Agent Virtual Machine (AVM)** — A Rust-based WASM sandbox that executes and records agent reasoning traces deterministically. Produces a signed trace package that validators can replay.
+**Agent Virtual Machine (AVM)** — A Rust-based WASM sandbox that executes and records agent reasoning traces deterministically. Produces a signed evidence package (including the VRP Merkle root) that validators can replay.
 
-**Proof-of-Deploy (PoD)** — MaatProof's consensus mechanism. Validators replay traces in sandboxed AVMs, check policy compliance, and vote to finalize or reject deployments. Honest attestation is rewarded; malicious or negligent attestation is slashed.
+**Deterministic Reasoning Engine (DRE)** — Sends a canonical PromptBundle to an N-of-M model committee, normalizes outputs to a `DecisionTuple`, checks convergence, and emits a `CommitteeCertificate`. Determinism is a system property, not a per-LLM-call property.
+
+**Verifiable Reasoning Proof (VRP)** — A Merkleized DAG of typed reasoning records (premises, inference rule, evidence refs, conclusion, checker ID). Enables selective disclosure and checker-registry verification without replaying the full trace.
+
+**Autonomous Deployment Authority (ADA)** — Evaluates 7 mandatory conditions and computes a deterministic risk score over: change size, scan severity, historical rollback rate, committee agreement %, validator agreement %, and service criticality. Rollback is a first-class trust protocol, not an error state.
+
+**Proof-of-Deploy (PoD)** — MaatProof's two-layer consensus mechanism. Layer 1: DRE model committee converges on a canonical decision. Layer 2: Validator committee verifies the reasoning Merkle root, ADA conditions, and policy compliance. Honest attestation is rewarded; equivocation and invalid attestation are slashed.
 
 **$MAAT Token** — The protocol's unit of economic accountability. Agents stake $MAAT to earn deploy rights. Validators earn $MAAT for honest attestation. Slashing destroys stake for policy violations.
 
-**Human Approval** — A signed Ed25519 attestation by a human key-holder, recorded on-chain. Not a UI button — a cryptographic proof of human authorization.
+**Human Approval** — A signed Ed25519 attestation by a human key-holder, recorded on-chain. Available as an optional `require_human_approval: stage == PRODUCTION` policy rule in Deployment Contracts. A cryptographic proof of human authorization when required by policy — not a protocol-level mandate.
