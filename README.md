@@ -220,14 +220,25 @@ graph LR
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per feature | $2,326 | $148 | **94%** |
+| Build cost per IaC feature | $5,500 | $221 | **96%** |
+| Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **98% faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
 | DORA rating | Low | **Elite** | — |
+| 5-year TCO savings | — | $1,881,815 | — |
 
-> _Last estimated: 2026-04-23 | [Full cost report →](docs/reports/cost-estimation-report.md)_
+### DRE Infrastructure Operational Cost (Issue #117)
+
+| Profile | Azure (Phase 1) | AWS (Phase 2) | GCP (Phase 3) | LLM API % |
+|---------|-----------------|---------------|----------------|-----------|
+| Standard (50 exec/day) | $267/mo | $263/mo | $218/mo | 39% |
+| Edge case (5K exec/day) | $11,016/mo | $10,967/mo | $10,834/mo | **94%** |
+
+> ⚠️ At scale, LLM API costs dominate (94%). Primary cost lever: **prompt token efficiency** and **committee size**.
+
+> _Last estimated: 2026-04-23 · Issue #117 [DRE Infrastructure / IaC] | [Full cost report →](docs/reports/cost-estimation-report.md) | [HTML summary →](docs/reports/cost-summary.html)_
 
 ---
 

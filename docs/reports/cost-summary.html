@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MaatProof Cost Summary — Issue #14</title>
+  <title>MaatProof Cost Summary — Issue #117 DRE Infrastructure / IaC</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -17,6 +17,7 @@
       --yellow: #d29922;
       --red: #f85149;
       --purple: #bc8cff;
+      --orange: #e3b341;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -25,6 +26,8 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       line-height: 1.6;
       padding: 2rem;
+      max-width: 1400px;
+      margin: 0 auto;
     }
     h1 { font-size: 2rem; color: var(--accent); margin-bottom: 0.25rem; }
     h2 { font-size: 1.25rem; color: var(--accent); margin: 2rem 0 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.5rem; }
@@ -32,7 +35,9 @@
     .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 2rem; }
     .badge { display: inline-block; background: var(--green); color: #000; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 12px; margin-left: 0.5rem; }
     .badge-blue { background: var(--accent); }
-    .badge-yellow { background: var(--yellow); }
+    .badge-yellow { background: var(--yellow); color: #000; }
+    .badge-red { background: var(--red); }
+    .badge-purple { background: var(--purple); color: #000; }
 
     /* KPI Cards */
     .kpi-grid {
@@ -48,525 +53,671 @@
       padding: 1.25rem;
     }
     .kpi-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-    .kpi-card .value { font-size: 1.75rem; font-weight: 700; color: var(--green); margin: 0.25rem 0; }
-    .kpi-card .value.blue { color: var(--accent); }
-    .kpi-card .value.yellow { color: var(--yellow); }
-    .kpi-card .value.red { color: var(--red); }
-    .kpi-card .sub { font-size: 0.75rem; color: var(--muted); }
+    .kpi-card .value { font-size: 1.75rem; font-weight: 700; color: var(--accent); margin: 0.25rem 0; }
+    .kpi-card .sub { font-size: 0.8rem; color: var(--muted); }
+    .kpi-card.green .value { color: var(--green); }
+    .kpi-card.yellow .value { color: var(--yellow); }
+    .kpi-card.red .value { color: var(--red); }
+    .kpi-card.purple .value { color: var(--purple); }
 
-    /* Chart grid */
+    /* Warning box */
+    .warning-box {
+      background: rgba(248, 81, 73, 0.1);
+      border: 1px solid var(--red);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 2rem;
+      font-size: 0.9rem;
+    }
+    .warning-box strong { color: var(--red); }
+
+    /* Info box */
+    .info-box {
+      background: rgba(88, 166, 255, 0.08);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 2rem;
+      font-size: 0.9rem;
+    }
+    .info-box strong { color: var(--accent); }
+
+    /* Chart layout */
     .chart-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+      grid-template-columns: 1fr 1fr;
       gap: 1.5rem;
       margin-bottom: 2rem;
     }
+    .chart-grid.wide { grid-template-columns: 1fr; }
+    @media (max-width: 900px) { .chart-grid { grid-template-columns: 1fr; } }
     .chart-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 8px;
-      padding: 1.5rem;
+      padding: 1.25rem;
     }
+    .chart-card canvas { max-height: 300px; }
 
     /* Tables */
-    table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: 0.875rem; }
-    th { background: var(--surface); color: var(--muted); text-align: left; padding: 0.5rem 0.75rem; border-bottom: 2px solid var(--border); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
-    td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); }
-    tr:last-child td { border-bottom: none; }
-    .win { color: var(--green); font-weight: 700; }
-    .lose { color: var(--red); }
-    .neutral { color: var(--yellow); }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; font-size: 0.875rem; }
+    th { background: var(--surface); color: var(--muted); font-weight: 600; text-align: left; padding: 0.6rem 0.8rem; border-bottom: 2px solid var(--border); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    td { padding: 0.6rem 0.8rem; border-bottom: 1px solid var(--border); }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .highlight-row td { color: var(--accent); font-weight: 700; }
+    .green-text { color: var(--green); font-weight: 600; }
+    .red-text { color: var(--red); }
+    .yellow-text { color: var(--yellow); }
 
-    /* Footer */
-    footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); font-size: 0.75rem; color: var(--muted); }
+    /* Phase pills */
+    .phase-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 700;
+    }
+    .phase-1 { background: rgba(63,185,80,0.2); color: var(--green); border: 1px solid var(--green); }
+    .phase-2 { background: rgba(88,166,255,0.15); color: var(--accent); border: 1px solid var(--accent); }
+    .phase-3 { background: rgba(188,140,255,0.15); color: var(--purple); border: 1px solid var(--purple); }
+
+    footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); font-size: 0.8rem; color: var(--muted); }
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
-
-    .recommendation {
-      background: var(--surface);
-      border-left: 4px solid var(--green);
-      border-radius: 0 8px 8px 0;
-      padding: 1rem 1.5rem;
-      margin: 1rem 0;
-    }
-    .recommendation h4 { color: var(--green); margin-bottom: 0.25rem; }
   </style>
 </head>
 <body>
 
-  <h1>MaatProof Cost Summary <span class="badge">cost:estimated</span></h1>
+  <h1>MaatProof Cost Summary</h1>
   <p class="subtitle">
-    Issue #14 · [ACI/ACD Engine] Data Model / Schema · Generated 2026-04-23 (Run #2) ·
-    <a href="cost-estimation-report.md">Full Report ↗</a>
+    Issue #117 — [Deterministic Reasoning Engine (DRE)] Infrastructure / IaC &nbsp;
+    <span class="badge">spec:passed</span>
+    <span class="badge badge-blue">cost:estimated</span>
+    &nbsp;·&nbsp; Generated 2026-04-23 &nbsp;·&nbsp;
+    <a href="cost-estimation-report.md">Full report →</a>
   </p>
+
+  <div class="warning-box">
+    ⚠️ <strong>Critical Finding:</strong> At edge case scale (5,000 DRE executions/day), LLM API costs represent <strong>94% of total operational cost</strong> ($10,350/$11,016/mo). Infrastructure optimization alone cannot offset this. Primary cost levers are <strong>prompt token efficiency</strong> and <strong>committee size optimization</strong>.
+  </div>
+
+  <div class="info-box">
+    🏗️ <strong>Phase 1 Provider: Azure (Bicep IaC)</strong> — mandated by <code>specs/dre-infra-spec.md §10.1</code>. AWS (Phase 2) and GCP (Phase 3) templates are roadmap items. All cloud comparisons are included for planning purposes.
+  </div>
 
   <!-- KPI Cards -->
   <h2>Key Metrics</h2>
   <div class="kpi-grid">
-    <div class="kpi-card">
-      <div class="label">Recommended Cloud</div>
-      <div class="value blue">GCP</div>
-      <div class="sub">Standard profile: $25/yr</div>
+    <div class="kpi-card green">
+      <div class="label">Build Savings (Issue #117)</div>
+      <div class="value">96%</div>
+      <div class="sub">$5,440 → $221 (ACI/ACD)</div>
     </div>
     <div class="kpi-card">
-      <div class="label">Build Cost Savings</div>
-      <div class="value">94%</div>
-      <div class="sub">$2,326 → $148 per issue</div>
+      <div class="label">Infra Cost / Month (Standard)</div>
+      <div class="value">$163</div>
+      <div class="sub">Azure, 50 DRE exec/day (excl. LLM API)</div>
     </div>
-    <div class="kpi-card">
-      <div class="label">Annual Dev Savings</div>
+    <div class="kpi-card yellow">
+      <div class="label">LLM API Cost / Month (Standard)</div>
+      <div class="value">$104</div>
+      <div class="sub">Claude + GPT-4o + Mistral, 50 exec/day</div>
+    </div>
+    <div class="kpi-card red">
+      <div class="label">Total Operational / Month (Edge)</div>
+      <div class="value">$11,016</div>
+      <div class="sub">Azure, 5,000 exec/day; 94% is LLM API</div>
+    </div>
+    <div class="kpi-card green">
+      <div class="label">Annual Developer Savings</div>
       <div class="value">$186K</div>
-      <div class="sub">3,104 hrs reclaimed/yr</div>
+      <div class="sub">3,104 hrs/yr saved (4-dev team)</div>
     </div>
-    <div class="kpi-card">
-      <div class="label">ROI (Year 1)</div>
-      <div class="value">12,433%</div>
-      <div class="sub">Payback: &lt;1 month</div>
-    </div>
-    <div class="kpi-card">
+    <div class="kpi-card green">
       <div class="label">5-Year TCO Savings</div>
-      <div class="value">$1.51M</div>
-      <div class="sub">vs $1.52M traditional</div>
+      <div class="value">$1.88M</div>
+      <div class="sub">ACI/ACD vs traditional pipeline</div>
     </div>
-    <div class="kpi-card">
-      <div class="label">Deploy Frequency</div>
-      <div class="value yellow">70×</div>
-      <div class="sub">1/week → 10/day (DORA Elite)</div>
+    <div class="kpi-card purple">
+      <div class="label">Pipeline ROI (Year 1)</div>
+      <div class="value">6,463%</div>
+      <div class="sub">DRE-feature complexity basis</div>
     </div>
-    <div class="kpi-card">
-      <div class="label">Change Failure Rate</div>
-      <div class="value">↓80%</div>
-      <div class="sub">15% → 3% defect escape</div>
-    </div>
-    <div class="kpi-card">
-      <div class="label">MTTR</div>
-      <div class="value">↓94%</div>
-      <div class="sub">4 hrs → 15 min recovery</div>
+    <div class="kpi-card green">
+      <div class="label">Payback Period</div>
+      <div class="value">&lt; 1 mo</div>
+      <div class="sub">Month 1 savings exceed total investment</div>
     </div>
   </div>
 
-  <!-- Charts Row 1 -->
-  <h2>Cloud Provider Cost Comparison</h2>
+  <!-- Chart 1 & 2: Cloud Provider Comparison + Build Cost Breakdown -->
   <div class="chart-grid">
     <div class="chart-card">
-      <h3>Annual Cost — Standard Profile (100 MAU)</h3>
-      <canvas id="cloudStandardChart" height="220"></canvas>
+      <h3>Cloud Provider — Standard Monthly Cost (50 DRE exec/day, incl. LLM API)</h3>
+      <canvas id="providerChart"></canvas>
     </div>
     <div class="chart-card">
-      <h3>Annual Cost — Edge Case Profile (10K MAU)</h3>
-      <canvas id="cloudEdgeChart" height="220"></canvas>
+      <h3>Build Cost: Traditional vs ACI/ACD (Issue #117)</h3>
+      <canvas id="buildChart"></canvas>
     </div>
   </div>
 
-  <!-- Charts Row 2 -->
-  <h2>ACI/ACD vs Traditional Build Costs</h2>
+  <!-- Chart 3: Monthly Cost Projection (line) -->
+  <div class="chart-grid wide">
+    <div class="chart-card">
+      <h3>Monthly Cost Projection — Infrastructure Only (Azure) as DRE Scale Grows</h3>
+      <canvas id="projectionChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Chart 4 & 5: LLM API breakdown + DORA -->
   <div class="chart-grid">
     <div class="chart-card">
-      <h3>Issue #14 Build Cost Breakdown</h3>
-      <canvas id="buildCostDonut" height="220"></canvas>
+      <h3>LLM API Cost Breakdown per DRE Execution (3-model committee)</h3>
+      <canvas id="llmChart"></canvas>
     </div>
     <div class="chart-card">
-      <h3>Full Feature (9-Issue Sprint) Cost Comparison</h3>
-      <canvas id="sprintCostBar" height="220"></canvas>
+      <h3>DORA Metrics — Traditional vs MaatProof ACI/ACD</h3>
+      <canvas id="doraChart"></canvas>
     </div>
   </div>
 
-  <!-- Charts Row 3 -->
-  <h2>Financial Projections</h2>
-  <div class="chart-grid">
-    <div class="chart-card">
-      <h3>Monthly Cost Projection (GCP, by MAU scale)</h3>
-      <canvas id="costProjectionLine" height="220"></canvas>
-    </div>
-    <div class="chart-card">
-      <h3>Cumulative 5-Year ROI</h3>
-      <canvas id="roiTimelineChart" height="220"></canvas>
-    </div>
-  </div>
-
-  <!-- DORA Table -->
-  <h2>DORA Metrics — MaatProof vs Traditional</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>Metric</th>
-        <th>Traditional</th>
-        <th>MaatProof ACI/ACD</th>
-        <th>Improvement</th>
-        <th>DORA Tier</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>Deployment Frequency</td>
-        <td class="lose">1× / week</td>
-        <td class="win">10× / day</td>
-        <td class="win">70× more frequent</td>
-        <td class="win">Elite</td>
-      </tr>
-      <tr>
-        <td>Lead Time for Changes</td>
-        <td class="lose">5 days</td>
-        <td class="win">2 hours</td>
-        <td class="win">60× faster</td>
-        <td class="win">Elite</td>
-      </tr>
-      <tr>
-        <td>Change Failure Rate</td>
-        <td class="lose">15%</td>
-        <td class="win">3%</td>
-        <td class="win">80% reduction</td>
-        <td class="win">Elite</td>
-      </tr>
-      <tr>
-        <td>Mean Time to Recovery</td>
-        <td class="lose">4 hours</td>
-        <td class="win">15 minutes</td>
-        <td class="win">94% faster</td>
-        <td class="win">Elite</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <!-- Cloud Comparison Table -->
-  <h2>Cloud Provider Recommendation</h2>
+  <!-- Cost Breakdown Table -->
+  <h2>Standard Usage Cost Breakdown (50 DRE Executions/Day)</h2>
   <table>
     <thead>
       <tr>
         <th>Resource</th>
-        <th>Azure</th>
-        <th>AWS</th>
-        <th>GCP</th>
-        <th>Winner</th>
+        <th>Azure (Phase 1)</th>
+        <th>AWS (Phase 2)</th>
+        <th>GCP (Phase 3)</th>
+        <th>Notes</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <td>Serverless Functions</td>
-        <td>$0.20/M exec</td>
-        <td>$0.20/M req</td>
-        <td>$0.40/M inv</td>
-        <td class="win">Azure / AWS</td>
+        <td>Kubernetes / Container Cluster</td>
+        <td class="num">$142.16/mo</td>
+        <td class="num">$143.17/mo</td>
+        <td class="num">$99.57/mo</td>
+        <td>AKS / EKS / GKE; spot exec pool + on-demand orchestrator</td>
       </tr>
       <tr>
-        <td>Container Hosting</td>
-        <td>$0.000012/vCPU-s</td>
-        <td>$0.04048/vCPU-hr</td>
-        <td class="win">$0.000024/vCPU-s</td>
-        <td class="win">GCP</td>
+        <td>Secrets Manager (3 LLM API keys)</td>
+        <td class="num">$0.05/mo</td>
+        <td class="num">$1.20/mo</td>
+        <td class="num">$0.18/mo</td>
+        <td>Azure wins; no per-secret charge</td>
       </tr>
       <tr>
-        <td>Audit Log DB</td>
-        <td>Cosmos: $0.008/RU-hr</td>
-        <td>DynamoDB: $1.25/M write</td>
-        <td class="win">Firestore: $0.06/100K writes</td>
-        <td class="win">GCP</td>
+        <td>Container Registry</td>
+        <td class="num">$5.00/mo</td>
+        <td class="num">$0.10/mo</td>
+        <td class="num">$0.10/mo</td>
+        <td>Azure flat fee; AWS/GCP per-GB cheaper at &lt;10GB</td>
       </tr>
       <tr>
-        <td>Object Storage</td>
-        <td class="win">$0.018/GB/mo</td>
-        <td>$0.023/GB/mo</td>
-        <td>$0.020/GB/mo</td>
-        <td class="win">Azure</td>
+        <td>Blob / Object Storage (proofs)</td>
+        <td class="num">$0.14/mo</td>
+        <td class="num">$0.18/mo</td>
+        <td class="num">$0.15/mo</td>
+        <td>Negligible at standard scale; 75 MB/mo growth</td>
       </tr>
       <tr>
-        <td>CI/CD (free minutes)</td>
-        <td>2,000 min/mo</td>
-        <td>100 min/mo</td>
-        <td class="win">3,600 min/mo</td>
-        <td class="win">GCP</td>
+        <td>Private Endpoints (×2)</td>
+        <td class="num">$14.60/mo</td>
+        <td class="num">$14.60/mo</td>
+        <td class="num">$14.60/mo</td>
+        <td>Required for security; parity across providers</td>
       </tr>
       <tr>
-        <td>Log Ingestion</td>
-        <td>$2.76/GB</td>
-        <td class="win">$0.50/GB</td>
-        <td>$10.24/GB</td>
-        <td class="win">AWS</td>
+        <td>Monitoring / Logs (37.5 MB/mo)</td>
+        <td class="num">$0.00/mo</td>
+        <td class="num">$0.00/mo</td>
+        <td class="num">$0.00/mo</td>
+        <td>Within free tier at standard scale</td>
+      </tr>
+      <tr class="highlight-row">
+        <td>Infrastructure Subtotal</td>
+        <td class="num">$162.80/mo</td>
+        <td class="num">$159.25/mo</td>
+        <td class="num">$114.60/mo</td>
+        <td></td>
       </tr>
       <tr>
-        <td>Secrets Manager</td>
-        <td class="win">$0.03/10K ops</td>
-        <td>$0.40/secret/mo</td>
-        <td>$0.06/secret/mo</td>
-        <td class="win">Azure</td>
+        <td>LLM API — Claude 3.7 Sonnet</td>
+        <td class="num">$47.25/mo</td>
+        <td class="num">$47.25/mo</td>
+        <td class="num">$47.25/mo</td>
+        <td>External; same cost regardless of cloud host</td>
       </tr>
       <tr>
-        <td>Egress (first 10 TB)</td>
-        <td>$0.087/GB</td>
-        <td>$0.090/GB</td>
-        <td class="win">$0.085/GB</td>
-        <td class="win">GCP</td>
+        <td>LLM API — GPT-4o</td>
+        <td class="num">$33.75/mo</td>
+        <td class="num">$33.75/mo</td>
+        <td class="num">$33.75/mo</td>
+        <td>External; same cost regardless of cloud host</td>
+      </tr>
+      <tr>
+        <td>LLM API — Mistral Large</td>
+        <td class="num">$22.50/mo</td>
+        <td class="num">$22.50/mo</td>
+        <td class="num">$22.50/mo</td>
+        <td>External; same cost regardless of cloud host</td>
+      </tr>
+      <tr class="highlight-row">
+        <td>TOTAL (incl. LLM API)</td>
+        <td class="num green-text">$266.30/mo</td>
+        <td class="num green-text">$262.75/mo</td>
+        <td class="num green-text">$218.10/mo</td>
+        <td>GCP saves ~$48/mo vs Azure at standard scale</td>
       </tr>
     </tbody>
   </table>
 
-  <div class="recommendation">
-    <h4>🏆 Recommendation: GCP-primary + AWS CloudWatch for logs</h4>
-    <p>GCP wins 5 of 8 resource categories for MaatProof's workload. The Firestore append-only pattern for AuditEntry reduces database costs by 87% vs Cosmos DB at standard scale. Add AWS CloudWatch for log aggregation to save ~$400/mo at edge scale.</p>
-  </div>
-
-  <!-- Revenue Table -->
-  <h2>Revenue Potential (SaaS Model)</h2>
+  <!-- Edge Case Table -->
+  <h2>Edge Case Cost Breakdown (5,000 DRE Executions/Day)</h2>
   <table>
     <thead>
       <tr>
-        <th>Tier</th>
-        <th>Price/mo</th>
-        <th>Yr 1 Customers</th>
-        <th>Infra Cost/Customer</th>
-        <th>Gross Margin</th>
-        <th>Monthly Revenue</th>
+        <th>Resource</th>
+        <th>Azure (Phase 1)</th>
+        <th>AWS (Phase 2)</th>
+        <th>GCP (Phase 3)</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <td>Free</td>
-        <td>$0</td>
-        <td>2,000</td>
-        <td>$0.13</td>
-        <td>—</td>
-        <td>$0</td>
+        <td>Kubernetes Cluster (orchestrator + spot execution)</td>
+        <td class="num">$635/mo</td>
+        <td class="num">$598/mo</td>
+        <td class="num">$466/mo</td>
       </tr>
       <tr>
-        <td>Pro</td>
-        <td>$49</td>
-        <td>150</td>
-        <td>$3.56</td>
-        <td class="win">93%</td>
-        <td class="win">$7,350</td>
+        <td>Secrets Manager</td>
+        <td class="num">$0.26/mo</td>
+        <td class="num">$3.79/mo</td>
+        <td class="num">$2.77/mo</td>
       </tr>
       <tr>
-        <td>Team</td>
-        <td>$199</td>
-        <td>40</td>
-        <td>$14.20</td>
-        <td class="win">93%</td>
-        <td class="win">$7,960</td>
+        <td>Container Registry</td>
+        <td class="num">$5.00/mo</td>
+        <td class="num">$0.10/mo</td>
+        <td class="num">$0.10/mo</td>
       </tr>
       <tr>
-        <td>Enterprise</td>
-        <td>$1,499</td>
-        <td>8</td>
-        <td>$103</td>
-        <td class="win">93%</td>
-        <td class="win">$11,992</td>
+        <td>Blob / Object Storage</td>
+        <td class="num">$0.54/mo</td>
+        <td class="num">$0.69/mo</td>
+        <td class="num">$0.60/mo</td>
       </tr>
-      <tr style="font-weight:bold;">
-        <td colspan="5">Total MRR (Month 12)</td>
-        <td class="win">$27,302</td>
+      <tr>
+        <td>Private Endpoints (×2)</td>
+        <td class="num">$14.60/mo</td>
+        <td class="num">$14.60/mo</td>
+        <td class="num">$14.60/mo</td>
+      </tr>
+      <tr>
+        <td>Monitoring / Logs (3.75 GB/mo)</td>
+        <td class="num red-text">$10.35/mo</td>
+        <td class="num green-text">$0.00/mo</td>
+        <td class="num green-text">$0.00/mo</td>
+      </tr>
+      <tr class="highlight-row">
+        <td>Infrastructure Subtotal</td>
+        <td class="num">$666/mo</td>
+        <td class="num">$617/mo</td>
+        <td class="num">$484/mo</td>
+      </tr>
+      <tr>
+        <td>LLM API (Claude + GPT-4o + Mistral)</td>
+        <td class="num red-text">$10,350/mo</td>
+        <td class="num red-text">$10,350/mo</td>
+        <td class="num red-text">$10,350/mo</td>
+      </tr>
+      <tr class="highlight-row">
+        <td>TOTAL (incl. LLM API)</td>
+        <td class="num red-text">$11,016/mo</td>
+        <td class="num red-text">$10,967/mo</td>
+        <td class="num red-text">$10,834/mo</td>
+      </tr>
+      <tr>
+        <td>LLM API as % of total cost</td>
+        <td class="num yellow-text">94.0%</td>
+        <td class="num yellow-text">94.4%</td>
+        <td class="num yellow-text">95.5%</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- DRE-specific: Committee Size Sensitivity -->
+  <h2>LLM API Cost Sensitivity — Committee Size (Standard: 50 exec/day)</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Committee Size</th>
+        <th>Cost / Execution</th>
+        <th>Monthly LLM API</th>
+        <th>Annual LLM API</th>
+        <th>Recommendation</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="highlight-row">
+        <td>3 models <span class="badge">minimum</span></td>
+        <td class="num">$0.069</td>
+        <td class="num">$103.50</td>
+        <td class="num">$1,242</td>
+        <td class="green-text">✅ Use for standard deployments</td>
+      </tr>
+      <tr>
+        <td>5 models</td>
+        <td class="num">$0.115</td>
+        <td class="num">$172.50</td>
+        <td class="num">$2,070</td>
+        <td>Reserve for CRITICAL tier only</td>
+      </tr>
+      <tr>
+        <td>7 models</td>
+        <td class="num">$0.161</td>
+        <td class="num">$241.50</td>
+        <td class="num">$2,898</td>
+        <td>High-assurance deployments only</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ROI Summary -->
+  <h2>ROI Summary</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th>Year 1</th>
+        <th>Year 3</th>
+        <th>Year 5</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Total ACI/ACD Cost</td>
+        <td class="num">$5,927</td>
+        <td class="num">$11,754</td>
+        <td class="num">$19,590</td>
+      </tr>
+      <tr>
+        <td>Traditional Equivalent Cost</td>
+        <td class="num red-text">$388,992</td>
+        <td class="num red-text">$388,992</td>
+        <td class="num red-text">$388,992</td>
+      </tr>
+      <tr class="highlight-row">
+        <td>Annual Savings</td>
+        <td class="num green-text">$383,065</td>
+        <td class="num green-text">$377,238</td>
+        <td class="num green-text">$369,402</td>
+      </tr>
+      <tr>
+        <td>Cumulative Savings</td>
+        <td class="num green-text">$383K</td>
+        <td class="num green-text">$1.14M</td>
+        <td class="num green-text">$1.88M</td>
+      </tr>
+      <tr>
+        <td>ROI</td>
+        <td class="num green-text">6,463%</td>
+        <td class="num green-text">3,211%</td>
+        <td class="num green-text">1,889%</td>
       </tr>
     </tbody>
   </table>
 
   <footer>
-    <p>
-      Generated by Cost Estimator Agent · MaatProof ACI/ACD Pipeline · 2026-04-23 (Run #2) ·
-      <a href="cost-estimation-report.md">Full Report</a> ·
-      <a href="../../README.md">README</a>
-    </p>
-    <p style="margin-top:0.5rem;">
-      Pricing sources: Azure, AWS, GCP public pricing pages (2026-04-22/23) · BLS OES 2025 · DORA Report 2024
-    </p>
+    <p>Cost Estimator Agent · MaatProof ACI/ACD Pipeline · Generated 2026-04-23</p>
+    <p>Issue #117: [DRE] Infrastructure / IaC · Parent: #28 Deterministic Reasoning Engine</p>
+    <p>Sources: Azure, AWS, GCP pricing pages · Anthropic / OpenAI / Mistral API pricing · BLS OES 2025 · DORA Report 2024</p>
+    <p><a href="cost-estimation-report.md">Full cost estimation report →</a></p>
   </footer>
 
-  <script>
-    const CHART_DEFAULTS = {
-      color: '#c9d1d9',
+<script>
+// ─── Chart defaults ─────────────────────────────────────────────────────────
+Chart.defaults.color = '#8b949e';
+Chart.defaults.borderColor = '#30363d';
+Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif";
+Chart.defaults.font.size = 12;
+
+// ─── 1. Provider Comparison Bar Chart ────────────────────────────────────────
+new Chart(document.getElementById('providerChart'), {
+  type: 'bar',
+  data: {
+    labels: ['AKS / EKS / GKE', 'Secrets Manager', 'Container Registry', 'Blob Storage', 'Private Endpoints', 'Monitoring', 'LLM API (Claude)', 'LLM API (GPT-4o)', 'LLM API (Mistral)'],
+    datasets: [
+      {
+        label: 'Azure (Phase 1)',
+        data: [142.16, 0.05, 5.00, 0.14, 14.60, 0.00, 47.25, 33.75, 22.50],
+        backgroundColor: 'rgba(0, 120, 212, 0.8)',
+        borderColor: '#0078D4',
+        borderWidth: 1
+      },
+      {
+        label: 'AWS (Phase 2)',
+        data: [143.17, 1.20, 0.10, 0.18, 14.60, 0.00, 47.25, 33.75, 22.50],
+        backgroundColor: 'rgba(255, 153, 0, 0.8)',
+        borderColor: '#FF9900',
+        borderWidth: 1
+      },
+      {
+        label: 'GCP (Phase 3)',
+        data: [99.57, 0.18, 0.10, 0.15, 14.60, 0.00, 47.25, 33.75, 22.50],
+        backgroundColor: 'rgba(66, 133, 244, 0.8)',
+        borderColor: '#4285F4',
+        borderWidth: 1
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: {
+      legend: { position: 'top' },
+      tooltip: {
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}/mo`
+        }
+      }
+    },
+    scales: {
+      x: { stacked: false, ticks: { maxRotation: 45, minRotation: 30 } },
+      y: {
+        stacked: false,
+        ticks: { callback: v => `$${v}` },
+        title: { display: true, text: '$/month' }
+      }
+    }
+  }
+});
+
+// ─── 2. Build Cost Donut Chart ────────────────────────────────────────────────
+new Chart(document.getElementById('buildChart'), {
+  type: 'doughnut',
+  data: {
+    labels: [
+      'ACI/ACD: Dev Review ($90)',
+      'ACI/ACD: AI Agent API ($6.45)',
+      'ACI/ACD: CI/CD & Infra ($28)',
+      'ACI/ACD: Spec Validation ($5)',
+      'ACI/ACD: Re-work ($60)',
+      'ACI/ACD: Overhead ($31)',
+      'Traditional SAVINGS ($5,279)'
+    ],
+    datasets: [{
+      data: [90, 6.45, 28, 5, 60, 31, 5279],
+      backgroundColor: [
+        'rgba(88, 166, 255, 0.9)',
+        'rgba(188, 140, 255, 0.9)',
+        'rgba(88, 166, 255, 0.5)',
+        'rgba(88, 166, 255, 0.3)',
+        'rgba(227, 179, 65, 0.7)',
+        'rgba(88, 166, 255, 0.15)',
+        'rgba(63, 185, 80, 0.85)'
+      ],
       borderColor: '#30363d',
-    };
-
-    Chart.defaults.color = '#c9d1d9';
-    Chart.defaults.borderColor = '#30363d';
-    Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
-
-    // 1. Cloud Standard Bar Chart
-    new Chart(document.getElementById('cloudStandardChart'), {
-      type: 'bar',
-      data: {
-        labels: ['Azure', 'AWS', 'GCP', 'GCP+AWS Logs'],
-        datasets: [{
-          label: 'Annual Cost ($)',
-          data: [192, 65, 25, 25],
-          backgroundColor: ['#f85149', '#d29922', '#3fb950', '#58a6ff'],
-          borderRadius: 4,
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Annual Cost (USD)' }, grid: { color: '#30363d' } },
-          x: { grid: { color: '#30363d' } }
-        }
-      }
-    });
-
-    // 2. Cloud Edge Bar Chart
-    new Chart(document.getElementById('cloudEdgeChart'), {
-      type: 'bar',
-      data: {
-        labels: ['Azure', 'AWS', 'GCP', 'GCP+AWS Logs'],
-        datasets: [{
-          label: 'Annual Cost ($)',
-          data: [22824, 8160, 5100, 3450],
-          backgroundColor: ['#f85149', '#d29922', '#3fb950', '#58a6ff'],
-          borderRadius: 4,
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Annual Cost (USD)' }, grid: { color: '#30363d' } },
-          x: { grid: { color: '#30363d' } }
-        }
-      }
-    });
-
-    // 3. Build Cost Donut
-    new Chart(document.getElementById('buildCostDonut'), {
-      type: 'doughnut',
-      data: {
-        labels: ['Dev Hours ($720)', 'QA ($270)', 'Spec Validation ($480)', 'Code Review ($180)', 'Docs ($160)', 'Rework ($216)', 'Infra ($240)', 'Other ($60)'],
-        datasets: [
-          {
-            label: 'Traditional',
-            data: [720, 270, 480, 180, 160, 216, 240, 60],
-            backgroundColor: ['#f85149','#ff7b72','#ffa198','#ffcec9','#d29922','#e3b341','#f0c94e','#ffd563'],
-            borderColor: '#0d1117',
-            borderWidth: 2,
-          },
-          {
-            label: 'ACI/ACD',
-            data: [90, 0, 3, 0, 0, 36, 15, 4],
-            backgroundColor: ['#3fb950','#56d364','#7ee787','#a5f3b5','#26a641','#2ea043','#1f8a35','#196127'],
-            borderColor: '#0d1117',
-            borderWidth: 2,
+      borderWidth: 1
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: true,
+    plugins: {
+      legend: { position: 'right', labels: { font: { size: 10 } } },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const val = ctx.parsed;
+            const total = 5500;
+            return ` $${val.toFixed(0)} (${(val/total*100).toFixed(1)}% of $5,500 traditional)`;
           }
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } },
-          tooltip: { callbacks: { label: ctx => `${ctx.dataset.label} — ${ctx.label}: $${ctx.parsed}` } }
         }
       }
-    });
+    }
+  }
+});
 
-    // 4. Sprint Cost Bar
-    new Chart(document.getElementById('sprintCostBar'), {
-      type: 'bar',
-      data: {
-        labels: ['Data Model', 'Core Impl', 'Infrastructure', 'Config', 'Unit Tests', 'Int. Tests', 'CI/CD', 'Docs', 'Validation'],
-        datasets: [
-          {
-            label: 'Traditional ($)',
-            data: [2326, 4800, 3600, 1440, 2880, 3600, 2400, 1920, 2400],
-            backgroundColor: '#f85149',
-            borderRadius: 4,
-          },
-          {
-            label: 'ACI/ACD ($)',
-            data: [148, 320, 240, 96, 192, 240, 160, 128, 160],
-            backgroundColor: '#3fb950',
-            borderRadius: 4,
-          }
-        ]
+// ─── 3. Monthly Cost Projection Line Chart ───────────────────────────────────
+const execLevels = ['10 exec/day\n(dev)', '50 exec/day\n(standard)', '500 exec/day\n(growth)', '1K exec/day', '2K exec/day', '5K exec/day\n(edge case)'];
+new Chart(document.getElementById('projectionChart'), {
+  type: 'line',
+  data: {
+    labels: ['10 exec/day', '50 exec/day', '500 exec/day', '1,000 exec/day', '2,000 exec/day', '5,000 exec/day'],
+    datasets: [
+      {
+        label: 'Azure Infrastructure (excl. LLM API)',
+        data: [158, 163, 239, 316, 471, 666],
+        borderColor: '#0078D4',
+        backgroundColor: 'rgba(0,120,212,0.1)',
+        fill: true,
+        tension: 0.3
       },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'top' } },
-        scales: {
-          y: { beginAtZero: true, stacked: false, title: { display: true, text: 'Cost (USD)' }, grid: { color: '#30363d' } },
-          x: { grid: { color: '#30363d' }, ticks: { font: { size: 9 } } }
-        }
+      {
+        label: 'LLM API Costs (Claude + GPT-4o + Mistral)',
+        data: [20.7, 103.5, 1035, 2070, 4140, 10350],
+        borderColor: '#f85149',
+        backgroundColor: 'rgba(248,81,73,0.1)',
+        fill: true,
+        tension: 0.3
+      },
+      {
+        label: 'Total Operational (Azure + LLM API)',
+        data: [178.7, 266.5, 1274, 2386, 4611, 11016],
+        borderColor: '#3fb950',
+        backgroundColor: 'rgba(63,185,80,0.05)',
+        fill: false,
+        tension: 0.3,
+        borderDash: [6, 3]
       }
-    });
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'top' },
+      tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: $${ctx.parsed.y.toLocaleString()}/mo` } }
+    },
+    scales: {
+      y: {
+        type: 'logarithmic',
+        ticks: { callback: v => `$${v >= 1000 ? (v/1000).toFixed(0)+'K' : v}` },
+        title: { display: true, text: '$/month (log scale)' }
+      }
+    }
+  }
+});
+document.getElementById('projectionChart').parentElement.style.height = '340px';
 
-    // 5. Cost Projection Line
-    new Chart(document.getElementById('costProjectionLine'), {
-      type: 'line',
-      data: {
-        labels: ['100 MAU', '500 MAU', '1K MAU', '2.5K MAU', '5K MAU', '10K MAU'],
-        datasets: [
-          {
-            label: 'Azure/mo',
-            data: [16, 80, 160, 400, 800, 1902],
-            borderColor: '#f85149',
-            backgroundColor: 'rgba(248,81,73,0.1)',
-            tension: 0.3,
-            fill: true,
-          },
-          {
-            label: 'AWS/mo',
-            data: [5.4, 27, 54, 135, 270, 680],
-            borderColor: '#d29922',
-            backgroundColor: 'rgba(210,153,34,0.1)',
-            tension: 0.3,
-            fill: true,
-          },
-          {
-            label: 'GCP/mo',
-            data: [2.06, 10, 21, 53, 106, 425],
-            borderColor: '#3fb950',
-            backgroundColor: 'rgba(63,185,80,0.1)',
-            tension: 0.3,
-            fill: true,
+// ─── 4. LLM API Cost Donut (per execution) ──────────────────────────────────
+new Chart(document.getElementById('llmChart'), {
+  type: 'pie',
+  data: {
+    labels: ['Claude 3.7 Sonnet ($0.0315)', 'GPT-4o ($0.0225)', 'Mistral Large ($0.015)'],
+    datasets: [{
+      data: [0.0315, 0.0225, 0.015],
+      backgroundColor: [
+        'rgba(188, 140, 255, 0.9)',
+        'rgba(63, 185, 80, 0.9)',
+        'rgba(88, 166, 255, 0.9)'
+      ],
+      borderColor: '#30363d',
+      borderWidth: 2
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { position: 'bottom' },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const v = ctx.parsed;
+            const pct = (v / 0.069 * 100).toFixed(0);
+            return ` $${v.toFixed(4)}/execution (${pct}%)`;
           }
-        ]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'top' } },
-        scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Monthly Cost (USD)' }, grid: { color: '#30363d' } },
-          x: { grid: { color: '#30363d' } }
         }
       }
-    });
+    }
+  }
+});
 
-    // 6. ROI Timeline
-    new Chart(document.getElementById('roiTimelineChart'), {
-      type: 'line',
-      data: {
-        labels: ['Month 0', 'Month 1', 'Month 6', 'Year 1', 'Year 2', 'Year 3', 'Year 5'],
-        datasets: [
-          {
-            label: 'Traditional Cumulative Cost ($K)',
-            data: [0, 25.4, 152, 304, 608, 912, 1522],
-            borderColor: '#f85149',
-            backgroundColor: 'rgba(248,81,73,0.05)',
-            tension: 0.3,
-            fill: true,
-          },
-          {
-            label: 'ACI/ACD Cumulative Cost ($K)',
-            data: [2.4, 2.6, 3.6, 4.8, 7.2, 9.6, 14.1],
-            borderColor: '#3fb950',
-            backgroundColor: 'rgba(63,185,80,0.1)',
-            tension: 0.3,
-            fill: true,
-          },
-          {
-            label: 'Cumulative Savings ($K)',
-            data: [-2.4, 22.4, 148, 302, 601, 906, 1508],
-            borderColor: '#58a6ff',
-            borderDash: [6, 3],
-            tension: 0.3,
-            fill: false,
-          }
-        ]
+// ─── 5. DORA Metrics Horizontal Bar ─────────────────────────────────────────
+new Chart(document.getElementById('doraChart'), {
+  type: 'bar',
+  data: {
+    labels: ['Deployment\nFrequency', 'Lead Time\nfor Changes', 'Change\nFailure Rate', 'MTTR'],
+    datasets: [
+      {
+        label: 'Traditional',
+        data: [1, 5, 15, 4],
+        backgroundColor: 'rgba(248, 81, 73, 0.75)',
+        borderColor: '#f85149',
+        borderWidth: 1
       },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'top' } },
-        scales: {
-          y: { title: { display: true, text: 'Cumulative Cost ($K)' }, grid: { color: '#30363d' } },
-          x: { grid: { color: '#30363d' } }
+      {
+        label: 'MaatProof ACI/ACD',
+        data: [70, 0.083, 3, 0.25],
+        backgroundColor: 'rgba(63, 185, 80, 0.75)',
+        borderColor: '#3fb950',
+        borderWidth: 1
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { position: 'top' },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const metric = ctx.label || '';
+            const v = ctx.parsed.y;
+            if (metric.includes('Frequency')) return ` ${ctx.dataset.label}: ${v}×/week`;
+            if (metric.includes('Lead')) return ` ${ctx.dataset.label}: ${v} days`;
+            if (metric.includes('Failure')) return ` ${ctx.dataset.label}: ${v}%`;
+            if (metric.includes('MTTR')) return ` ${ctx.dataset.label}: ${v} hrs`;
+            return ` ${ctx.dataset.label}: ${v}`;
+          }
         }
       }
-    });
-  </script>
+    },
+    scales: {
+      x: { grouped: true },
+      y: {
+        title: { display: true, text: 'Value (lower is better for CFR/MTTR/Lead Time)' },
+        ticks: { callback: v => v }
+      }
+    }
+  }
+});
+</script>
 </body>
 </html>
