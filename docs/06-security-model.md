@@ -277,6 +277,53 @@ policy are in-flight (status PENDING, VERIFYING, or VOTING):
 
 ---
 
+## Governance Calldata Validation
+
+<!-- Addresses EDGE-ADA-027 -->
+
+`Governance.execute()` is one of the most privileged functions in the protocol — it
+can call any on-chain contract with arbitrary calldata once a proposal passes. Malicious
+calldata in a governance proposal could drain the DAO treasury, change critical
+addresses, or modify protocol parameters.
+
+### Required Controls
+
+1. **Calldata allow-list by target contract**: `Governance.execute()` MUST maintain
+   a per-target-contract list of permitted function selectors. Proposals calling an
+   unlisted selector are rejected at execution time:
+
+   ```solidity
+   mapping(address => mapping(bytes4 => bool)) public permittedCalldata;
+
+   function execute(address target, bytes calldata data) external onlyGovernance {
+       bytes4 selector = bytes4(data[:4]);
+       require(
+           permittedCalldata[target][selector],
+           "GOVERNANCE_CALLDATA_NOT_PERMITTED"
+       );
+       (bool success, ) = target.call(data);
+       require(success, "GOVERNANCE_CALL_FAILED");
+   }
+   ```
+
+2. **Treasury fund transfer cap**: Any governance proposal that transfers $MAAT from
+   the DAO treasury is capped at 10% of treasury per proposal, unless it passes with
+   **80% supermajority** (standard: 60%).
+
+3. **Value parameter restriction**: `Governance.execute()` MUST have `value = 0`
+   unless the proposal explicitly declares an ETH transfer amount that was part of
+   the governance vote body.
+
+4. **7-day execution timelock**: All governance proposals (including those with
+   permitted calldata) enforce a minimum 7-day timelock between passing and
+   execution, allowing the community to detect and respond to malicious proposals.
+
+5. **Proposal body verification**: The calldata committed in the proposal body
+   (at submission time) MUST match the calldata supplied at `execute()` time.
+   A Merkle proof or hash commitment is required to prevent calldata substitution.
+
+---
+
 ## Network Security
 
 Inter-node communication between AVM nodes, validators, and the API layer is secured by:

@@ -160,17 +160,89 @@ flowchart TD
 
 ### WASM Stdlib Versioning
 
-The WASM stdlib is versioned and content-addressed. Each protocol upgrade may introduce a new stdlib version. Validators must support all historic stdlib versions to replay older traces.
+<!-- Addresses EDGE-ADA-034 -->
+
+The WASM stdlib is versioned and content-addressed. Each protocol upgrade may introduce a new stdlib version. Validators MUST support all historic stdlib versions to replay older traces.
+
+**Critical**: The implementation MUST NOT panic on unknown versions — this would crash the
+validator node and prevent any trace replay. Instead, return a structured error:
 
 ```rust
-pub fn load_stdlib_module(version: u32) -> Vec<u8> {
+#[derive(Debug, thiserror::Error)]
+pub enum WasmStdlibError {
+    #[error("Unknown WASM stdlib version {version}: node must be upgraded to replay this trace")]
+    UnknownVersion { version: u32 },
+    #[error("WASM stdlib version {version} has been removed after EOL date; contact DAO for archive")]
+    VersionRetired { version: u32 },
+}
+
+pub fn load_stdlib_module(version: u32) -> Result<Vec<u8>, WasmStdlibError> {
     match version {
-        1 => include_bytes!("../wasm/stdlib_v1.wasm").to_vec(),
-        2 => include_bytes!("../wasm/stdlib_v2.wasm").to_vec(),
-        _ => panic!("Unknown stdlib version: {}", version),
+        1 => Ok(include_bytes!("../wasm/stdlib_v1.wasm").to_vec()),
+        2 => Ok(include_bytes!("../wasm/stdlib_v2.wasm").to_vec()),
+        3 => Ok(include_bytes!("../wasm/stdlib_v3.wasm").to_vec()),
+        // When a node encounters an unknown version, it must not crash —
+        // it should return an error and cast a DISPUTE vote (good-faith disagreement),
+        // then download the stdlib from the on-chain stdlib registry.
+        v => Err(WasmStdlibError::UnknownVersion { version: v }),
     }
 }
 ```
+
+### WASM Stdlib Upgrade Protocol
+
+When a validator node encounters `WasmStdlibError::UnknownVersion`:
+
+1. **Do not panic** — return `ReplayResult::StdlibMissing { version }` to the caller.
+2. **Do not cast a REJECT vote** — the validator cannot distinguish between a tampered
+   trace and a trace that needs a newer stdlib.
+3. **Cast a `GoodFaithDisagreement` DISPUTE vote** citing `StdlibVersionUnknown`.
+4. **Fetch the missing stdlib** from the on-chain stdlib registry (governance-controlled):
+   ```rust
+   let module = chain_client.fetch_stdlib_wasm(version).await?;
+   // Verify content hash matches on-chain registry entry
+   assert_eq!(sha256(&module), chain_client.get_stdlib_hash(version).await?);
+   // Cache locally
+   local_stdlib_cache.insert(version, module);
+   ```
+5. **Re-verify the trace** after downloading the stdlib.
+
+The on-chain stdlib registry MUST be updated via governance vote before any new
+protocol version is deployed to mainnet. A validator that cannot download the missing
+stdlib within the `VERIFYING` phase timeout (20s) casts a `GoodFaithDisagreement`
+dispute and the chain proceeds via governance resolution.
+
+### IPFS Unavailability During Trace Validation
+
+<!-- Addresses EDGE-ADA-033 -->
+
+When validators attempt to fetch trace CIDs from IPFS and the IPFS network is
+unavailable or the CID is unresolvable, the following protocol applies:
+
+| Scenario | Validator Action |
+|---|---|
+| IPFS request times out (>10s) | Retry once via alternate IPFS gateway |
+| IPFS CID not found after 2 retries | Cast `GoodFaithDisagreement` DISPUTE vote |
+| IPFS fully unavailable (all gateways down) | Round moves to DISCARDED after VERIFYING timeout |
+| CID found but hash mismatch | Cast REJECT vote with `EVIDENCE_HASH_MISMATCH` reason |
+
+**Fallback gateways**: Validators MUST be configured with at least 3 IPFS gateways.
+The AVM node config MUST include:
+
+```toml
+[ipfs]
+gateways = [
+  "https://ipfs.io/ipfs/",
+  "https://cloudflare-ipfs.com/ipfs/",
+  "https://gateway.pinata.cloud/ipfs/",
+]
+timeout_secs = 10
+retry_count  = 2
+```
+
+When a trace cannot be verified due to IPFS unavailability (not due to validator
+malice), the round is DISCARDED (not REJECTED). The agent may resubmit after IPFS
+recovers. No stake is slashed for an IPFS-caused failure.
 
 ### Sandbox Lifecycle
 

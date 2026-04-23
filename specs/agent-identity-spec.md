@@ -287,3 +287,105 @@ Agents may be voluntarily retired or forcibly deregistered:
 | **Governance removal** | DAO vote | Used for agents that cause systemic harm; requires 2/3 governance vote |
 
 Retired agents remain readable on-chain for audit purposes. Their trace history is permanent.
+
+---
+
+## Agent Owner Key Loss Recovery
+
+<!-- Addresses EDGE-ADA-006 -->
+
+If an agent owner permanently loses access to their staking wallet (e.g., lost seed phrase,
+hardware failure, death), the following recovery paths are available:
+
+### Path 1: DAO Governance Recovery (Preferred)
+
+If the agent owner can prove identity via the DID registry (e.g., via an out-of-band
+attestation from multiple trusted parties), the DAO may vote to reassign the staking
+address:
+
+```mermaid
+flowchart TD
+    A[Agent owner proves identity\nvia DID registry out-of-band] --> B[File DAO governance proposal\nDID_STAKE_RECOVERY with proof bundle]
+    B --> C[48h timelock + 72h voting]
+    C -->|2/3 supermajority| D[New staking address assigned\nto same DID]
+    C -->|Rejected| E[Funds remain locked\nDAO may declare them treasury after 2 years]
+```
+
+### Path 2: Emergency Guardian Transfer
+
+For production agents that registered with a **guardian address** at registration time,
+the guardian may initiate a one-time stake transfer to a new wallet:
+
+```solidity
+function emergencyTransferStake(
+    string calldata agentDid,
+    address newStakingAddress,
+    bytes calldata guardianSignature
+) external {
+    AgentRecord storage agent = agents[agentDid];
+    require(agent.guardianAddress != address(0), "No guardian registered");
+    require(
+        verifyGuardianSig(agentDid, newStakingAddress, guardianSignature, agent.guardianAddress),
+        "Invalid guardian signature"
+    );
+    require(agent.stakeLockExpiry < block.timestamp, "Stake still locked");
+    // Transfer ownership
+    agent.stakingAddress = newStakingAddress;
+    emit AgentStakeTransferred(agentDid, msg.sender, newStakingAddress, block.timestamp);
+}
+```
+
+**Guardian registration** is optional and specified at `register()` time:
+```solidity
+// Optional: register a guardian address at agent registration
+agents[did].guardianAddress = guardianAddress; // may be address(0) if none
+```
+
+### Path 3: Stake Expiry
+
+If neither path is available and the staking wallet is permanently inaccessible:
+- Staked tokens remain locked for the duration of the active challenge window
+- After a **2-year inactivity timeout**, the DAO may move the locked tokens to the
+  treasury via governance vote (`INACTIVE_STAKE_RECLAIM`), subject to a 30-day
+  public notice period
+
+This prevents permanent token lockup from eroding the total supply indefinitely.
+
+---
+
+## Multi-Sig Guardian Emergency Recovery
+
+<!-- Addresses EDGE-ADA-005 -->
+
+Human approver keys are protected by a 2-of-3 multi-sig guardian model. If guardian
+quorum becomes unreachable (e.g., guardians are on leave, keys are lost), the following
+emergency paths exist:
+
+### Guardian Quorum Failure Recovery
+
+| Scenario | Recovery Path |
+|---|---|
+| 1-of-3 guardians unreachable | Other 2 guardians form quorum normally |
+| 2-of-3 guardians unreachable (quorum lost) | DAO governance emergency vote (see below) |
+| All 3 guardians unreachable | DAO emergency vote + 14-day waiting period |
+
+### DAO Emergency Governance Path
+
+When guardian quorum is lost (< 2-of-3 guardians reachable for > 24 hours), the
+human approver account enters `GUARDIAN_QUORUM_FAILED` state:
+
+1. Any DAO member may file a `GUARDIAN_EMERGENCY_RECOVERY` governance proposal.
+2. The proposal requires **80% supermajority** (higher than normal 2/3 threshold).
+3. Voting period is **7 days** (extended from normal 72 hours).
+4. If passed, the governance contract issues a new human approver DID and revokes
+   the old one — the old approver key is tombstoned on-chain.
+5. Pending production deployments that were awaiting the original human approver
+   are re-queued with the new approver.
+
+**Until recovery**: All new production deployments requiring `require_human_approval`
+are **blocked** (not processed). Existing deployments in `AWAITING_APPROVAL` state
+remain pending with an extended `human_approval_timeout` equal to the guardian
+recovery period.
+
+This is a Critical-path scenario — operators should designate geographically and
+institutionally diverse guardians to minimize this risk.

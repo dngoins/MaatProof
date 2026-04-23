@@ -478,6 +478,61 @@ sequenceDiagram
 
 ---
 
+## Sybil Attack Prevention
+
+<!-- Addresses EDGE-ADA-019 -->
+
+A Sybil attack occurs when a single malicious operator registers multiple validator DIDs
+to accumulate disproportionate stake weight and approach (or exceed) the 1/3 safety
+threshold needed to halt finality or the 2/3 threshold needed to approve malicious
+deployments.
+
+### One-Operator Identity Binding
+
+To prevent Sybil attacks, each validator DID is bound to a unique on-chain staking address
+(Ethereum EOA or smart contract wallet). The binding is enforced at registration:
+
+```solidity
+function registerValidator(
+    string calldata did,
+    bytes  calldata publicKey,
+    uint256 stakeAmount
+) external {
+    require(
+        validatorsByStakingAddress[msg.sender] == 0,
+        "SYBIL_VIOLATION: staking address already has a registered validator"
+    );
+    // Each staking address may only register ONE validator DID
+    validatorsByStakingAddress[msg.sender] = didToValidatorId[did];
+    ...
+}
+```
+
+**Limits**:
+- One staking address → one active validator DID at a time
+- Re-registration under a new DID from the same staking address is blocked while the
+  original validator is active
+- Retiring an old validator (full unstake + `deregisterValidator()`) is required
+  before the staking address may register a new DID
+
+### Stake Concentration Limits (Anti-Cartel)
+
+To prevent a single entity from acquiring dominant stake weight, the protocol enforces
+a **per-DID stake cap**:
+
+```
+max_single_validator_stake = total_active_stake × 0.20
+```
+
+Validators whose stake exceeds 20% of total active stake are restricted:
+- Their excess stake earns no block rewards (economic disincentive to over-stake)
+- They may still vote, but their excess weight is capped at 20% of total for quorum
+  calculation purposes
+
+These limits are enforced in the consensus engine's stake-weight computation.
+
+---
+
 ## Fork Handling
 
 MaatProof uses BFT consensus with deterministic finality. **Forks do not occur** under normal operation. However, network partition scenarios are handled:

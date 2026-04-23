@@ -904,6 +904,218 @@ exception is raised.
 
 ---
 
+## Rollback Trigger SLA
+
+<!-- Addresses EDGE-ADA-002 -->
+
+The Runtime Guard MUST trigger rollback within **60 seconds** of the first metric sample
+that violates a threshold. The 60-second SLA is derived from the observation cadence:
+
+| Phase | Duration |
+|---|---|
+| Metrics poll interval | ≤ 30 seconds |
+| Threshold evaluation + decision | ≤ 5 seconds |
+| Rollback command issued to runtime (K8s / ECS) | ≤ 15 seconds |
+| Rollback proof written to chain | ≤ 10 seconds |
+| **Total worst-case** | **≤ 60 seconds** |
+
+If the first poll that detects a violation does not result in a completed rollback (proof
+on-chain) within 60 seconds, the deployment MUST be marked `ROLLBACK_FAILED` and an
+emergency alert emitted to human operators.
+
+```rust
+pub const MAX_ROLLBACK_TRIGGER_SECS: u64 = 60;
+pub const METRICS_POLL_INTERVAL_SECS: u64 = 30;
+```
+
+The `RuntimeGuard` implementation MUST record the `first_violation_at` timestamp when a
+threshold is first exceeded, and MUST fail the rollback if `now - first_violation_at > 60s`
+without a confirmed rollback.
+
+---
+
+## Governance Vote Manipulation Protection
+
+<!-- Addresses EDGE-ADA-004 -->
+
+To prevent flash-loan-style manipulation of DAO governance votes (where an attacker
+borrows $MAAT to spike voting weight, votes, then returns tokens before the vote
+window closes), the following staking lock requirements apply:
+
+### Voting Eligibility Window
+
+| Requirement | Value |
+|---|---|
+| Minimum stake lock before vote | 7 days (604,800 seconds) |
+| Stake must remain locked during entire voting period | Yes |
+| Unstake during active vote participation | Prohibited — tx reverts with `STAKE_LOCKED_FOR_VOTING` |
+
+### Enforcement Mechanism
+
+```solidity
+// In MaatToken.sol / Governance.sol
+mapping(address => uint256) public stakeLockExpiry; // per account
+
+function stake(uint256 amount) external {
+    // Record staking time; eligible to vote only after MIN_STAKE_LOCK_SECS
+    stakeLockExpiry[msg.sender] = block.timestamp + GOVERNANCE_LOCK_PERIOD;
+    ...
+}
+
+function castVote(uint256 proposalId, bool support) external {
+    require(
+        block.timestamp >= stakeLockExpiry[msg.sender],
+        "Stake not locked long enough to vote"
+    );
+    // Extend lock through the end of the current voting period
+    uint256 voteEnd = proposals[proposalId].voteEnd;
+    if (stakeLockExpiry[msg.sender] < voteEnd) {
+        stakeLockExpiry[msg.sender] = voteEnd;
+    }
+    ...
+}
+```
+
+**Governance slashing rules** for manipulation attempts:
+- Attempting to unstake during an active vote where the account has voted:
+  transaction reverts with `ACTIVE_VOTE_LOCK_VIOLATION`.
+- If a governance attack via stake-vote-unstake is proven on-chain, the evidence
+  is submitted under `AGENT_POLICY_VIOLATION` with a 25% stake slash.
+
+---
+
+## Rollback Proof Security
+
+<!-- Addresses EDGE-ADA-003 -->
+
+The `RollbackProof` is signed with the **agent's Ed25519 private key** (not HMAC-SHA256).
+HMAC keys are internal to the audit log layer and MUST NEVER appear in:
+
+- On-chain records (`RollbackProof`, `AdaAuthorization`, `FinalizedDeployment`)
+- IPFS-stored trace artifacts (trace JSON-LD)
+- gRPC messages to validators
+- Any externally-accessible artifact
+
+The `proof_signature` field in `RollbackProof` is an Ed25519 signature over the
+canonical serialization of all other fields (excluding `proof_signature` itself).
+The HMAC audit log entry for the rollback is a separate record in the local SQLite
+audit log and carries its own HMAC — the HMAC key material does NOT flow into the
+Ed25519-signed rollback proof.
+
+**Verification path**: An auditor verifying a `RollbackProof` uses the agent's
+on-chain Ed25519 public key — no HMAC key material required.
+
+```rust
+// CORRECT: rollback proof uses Ed25519 only
+let rollback_proof = RollbackProof {
+    deployment_id,
+    trigger_reason,
+    metrics_snapshot,
+    reverted_to_artifact,
+    rollback_at: now_secs(),
+    runtime_guard_hash,
+    proof_signature: ed25519_sign(&canonical_bytes, &agent_signing_key),
+    // ← No HMAC key appears here
+};
+```
+
+---
+
+## Risk Score Input Validation
+
+<!-- Addresses EDGE-ADA-009 -->
+
+The deterministic risk score function MUST validate all inputs before computation to
+prevent overflow, underflow, and silent correctness failures:
+
+```rust
+pub fn compute_risk_score(inputs: &RiskInputs) -> Result<RiskScore, RiskScoreError> {
+    // Bounds validation
+    if inputs.historical_rollback_rate < 0.0 || inputs.historical_rollback_rate > 1.0 {
+        return Err(RiskScoreError::InvalidInput {
+            field: "historical_rollback_rate",
+            reason: "must be in [0.0, 1.0]",
+        });
+    }
+    if inputs.committee_agreement_pct < 0.0 || inputs.committee_agreement_pct > 1.0 {
+        return Err(RiskScoreError::InvalidInput {
+            field: "committee_agreement_pct",
+            reason: "must be in [0.0, 1.0]",
+        });
+    }
+    if inputs.validator_agreement_pct < 0.0 || inputs.validator_agreement_pct > 1.0 {
+        return Err(RiskScoreError::InvalidInput {
+            field: "validator_agreement_pct",
+            reason: "must be in [0.0, 1.0]",
+        });
+    }
+    // change_size_lines: u32 cannot underflow; cap at MAX to prevent inflated score
+    let capped_lines = inputs.change_size_lines.min(100_000);
+
+    // Scoring function — all arithmetic is integer/fixed-point, no floating overflow
+    let base: u32 = 1000;
+    let line_penalty = (capped_lines / 1000).min(200);           // max -200
+    let rollback_penalty = (inputs.historical_rollback_rate * 300.0) as u32; // max -300
+    let agreement_bonus = (inputs.committee_agreement_pct * 200.0) as u32;   // +200
+    let val_bonus = (inputs.validator_agreement_pct * 100.0) as u32;          // +100
+    let severity_penalty: u32 = match inputs.scan_severity_max {
+        Severity::None     => 0,
+        Severity::Low      => 10,
+        Severity::Medium   => 50,
+        Severity::High     => 500,  // blocks by Condition 6 first
+        Severity::Critical => 1000, // blocks by Condition 6 first
+    };
+
+    let raw = base
+        .saturating_sub(line_penalty)
+        .saturating_sub(rollback_penalty)
+        .saturating_sub(severity_penalty)
+        .saturating_add(agreement_bonus)
+        .saturating_add(val_bonus);
+
+    // Clamp to [0, 1000]
+    let score = raw.min(1000);
+
+    Ok(RiskScore {
+        score,
+        inputs: inputs.clone(),
+        function_version: RISK_SCORE_VERSION.to_string(),
+    })
+}
+
+pub const RISK_SCORE_VERSION: &str = "v1.0";
+```
+
+Use `saturating_add` / `saturating_sub` throughout to prevent integer overflow/underflow.
+Validators MUST reject blocks where `risk_score.function_version` does not match the
+on-chain registered version.
+
+---
+
+## Naming Clarification: "5 Signals" vs "7 Conditions"
+
+<!-- Addresses EDGE-ADA-001 -->
+
+Some external documents (e.g., the parent issue #49 and issue #142) refer to ADA as
+computing the deployment authority level from "all 5 signals." This wording reflects
+an earlier version of the ADA design that used 5 high-level trust signals.
+
+**The authoritative specification defines 7 conditions** (see §The 7 ADA Conditions
+above). The mapping from the older terminology is:
+
+| Old Term (5 signals) | Current Condition(s) |
+|---|---|
+| Policy compliance | Condition 1: Hard Policy Gates |
+| AI reasoning consensus | Condition 2: DRE Committee Quorum |
+| Proof validity | Condition 3: VRP Checker Set |
+| Network attestation | Condition 4: Validator Quorum |
+| Risk gate | Condition 5: Risk Score + Condition 6: Security Findings + Condition 7: Runtime Guard |
+
+Any test or acceptance criterion referencing "5 signals" MUST be interpreted as requiring
+all 7 ADA conditions. The 7-condition model supersedes the 5-signal terminology.
+
+---
+
 ## References
 
 - Whitepaper §3.7 — Autonomous Deployment Authority (ADA)
