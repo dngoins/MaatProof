@@ -42,7 +42,18 @@ class PipelineEvent(str, Enum):
 
 @dataclass
 class AuditEntry:
-    """A single signed entry in the orchestrator audit log."""
+    """A single append-only entry in the orchestrator audit log.
+
+    Entries are immutable by convention and identified by a UUID so that an
+    append-only log can be merged, replayed, or diffed without ambiguity.
+
+    Attributes:
+        entry_id:  Globally unique identifier (UUIDv4 recommended) for this entry.
+        event:     Name of the pipeline event being recorded (e.g. ``"code_pushed"``).
+        timestamp: Unix timestamp (seconds) when the event was recorded.
+        result:    String summary of the handler result.
+        metadata:  Free-form key/value context attached to the event.
+    """
 
     entry_id: str
     event: str
@@ -50,14 +61,41 @@ class AuditEntry:
     result: str
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    @staticmethod
+    def new_entry_id() -> str:
+        """Generate a fresh, globally unique entry identifier (UUIDv4)."""
+        # Time complexity:  O(1) — UUID4 is constant-time.
+        # Space complexity: O(1).
+        return str(uuid.uuid4())
+
     def to_dict(self) -> Dict[str, Any]:
+        """Serialize the entry to a JSON-compatible dictionary."""
+        # Time complexity:  O(|metadata|) — shallow copy of the metadata dict.
+        # Space complexity: O(|metadata|).
         return {
             "entry_id": self.entry_id,
             "event": self.event,
             "timestamp": self.timestamp,
             "result": self.result,
-            "metadata": self.metadata,
+            "metadata": dict(self.metadata),
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AuditEntry":
+        """Rehydrate an :class:`AuditEntry` from the dict produced by :meth:`to_dict`.
+
+        Raises:
+            KeyError: If any required field is missing from *data*.
+        """
+        # Time complexity:  O(|metadata|) — copies the metadata dict only.
+        # Space complexity: O(|metadata|).
+        return cls(
+            entry_id=data["entry_id"],
+            event=data["event"],
+            timestamp=data["timestamp"],
+            result=data["result"],
+            metadata=dict(data.get("metadata", {})),
+        )
 
 
 class OrchestratingAgent:
@@ -118,6 +156,8 @@ class OrchestratingAgent:
 
         Returns *self* for chaining.
         """
+        # Time complexity:  O(1) — dict insertion.
+        # Space complexity: O(1) per registered handler.
         self._handlers[event] = handler
         return self
 
@@ -134,6 +174,9 @@ class OrchestratingAgent:
             The string result returned by the handler, or ``None`` if no
             handler is registered for *event*.
         """
+        # Time complexity:  O(1) for dispatch + whatever the handler costs
+        #                   + O(|kwargs|) to stringify metadata on audit.
+        # Space complexity: O(|kwargs|) for the audit entry.
         handler = self._handlers.get(event)
         result: Optional[str] = None
         if handler is not None:
@@ -143,6 +186,8 @@ class OrchestratingAgent:
 
     def get_audit_log(self) -> List[Dict[str, Any]]:
         """Return the complete audit log as a list of serializable dicts."""
+        # Time complexity:  O(n) where n = number of recorded entries.
+        # Space complexity: O(n) for the returned list.
         return [entry.to_dict() for entry in self._audit_log]
 
     # ------------------------------------------------------------------
@@ -205,9 +250,12 @@ class OrchestratingAgent:
         self, event: PipelineEvent, result: str, metadata: Dict[str, Any]
     ) -> None:
         """Append an entry to the immutable audit log."""
+        # Time complexity:  O(|metadata|) — amortized O(1) append to the list,
+        #                   plus a linear pass over metadata to stringify values.
+        # Space complexity: O(|metadata|) for the stringified copy.
         self._audit_log.append(
             AuditEntry(
-                entry_id=str(uuid.uuid4()),
+                entry_id=AuditEntry.new_entry_id(),
                 event=event.value,
                 timestamp=time.time(),
                 result=result,

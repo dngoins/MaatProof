@@ -46,14 +46,34 @@ class AgentResult:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize to a dictionary."""
+        """Serialize to a JSON-compatible dictionary."""
+        # Time complexity:  O(k) where k = number of steps in the embedded proof.
+        # Space complexity: O(k) for the embedded proof dict.
         return {
             "agent_name": self.agent_name,
             "decision": self.decision.value,
             "summary": self.summary,
             "proof": self.proof.to_dict(),
-            "metadata": self.metadata,
+            "metadata": dict(self.metadata),
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "AgentResult":
+        """Rehydrate an :class:`AgentResult` from :meth:`to_dict` output.
+
+        Raises:
+            KeyError:   If any required field is missing.
+            ValueError: If ``decision`` is not a valid :class:`AgentDecision`.
+        """
+        # Time complexity:  O(k) where k = number of embedded proof steps.
+        # Space complexity: O(k).
+        return cls(
+            agent_name=data["agent_name"],
+            decision=AgentDecision(data["decision"]),
+            summary=data["summary"],
+            proof=ReasoningProof.from_dict(data["proof"]),
+            metadata=dict(data.get("metadata", {})),
+        )
 
 
 class AgentGate:
@@ -95,6 +115,10 @@ class AgentGate:
         Returns:
             An :class:`AgentResult` containing the decision and its proof.
         """
+        # Time complexity:  O(R + k) where R = cost of ``reasoning_fn`` and
+        #                   k = number of steps produced in the chain
+        #                   (each step contributes one SHA-256 pass at seal time).
+        # Space complexity: O(k) for the sealed proof's step list.
         from ..chain import ReasoningChain
 
         chain = ReasoningChain(builder=self._proof_builder)
@@ -125,6 +149,8 @@ class AgentLayer:
 
         Returns *self* for method chaining.
         """
+        # Time complexity:  Amortized O(1) — list append.
+        # Space complexity: O(1) per registered gate.
         self._gates.append(gate)
         return self
 
@@ -141,6 +167,9 @@ class AgentLayer:
         Returns:
             An :class:`AgentResult` if the gate is found, ``None`` otherwise.
         """
+        # Time complexity:  O(g) to locate the gate by name (linear scan) +
+        #                   O(R + k) to execute it (see :meth:`AgentGate.run`).
+        # Space complexity: O(k) for the produced proof.
         for gate in self._gates:
             if gate.name == gate_name:
                 return gate.run(context, **kwargs)
@@ -153,4 +182,6 @@ class AgentLayer:
             context: Shared context string forwarded to every gate.
             **kwargs: Additional arguments forwarded to every gate.
         """
+        # Time complexity:  O(sum of each gate's cost) — no short-circuit.
+        # Space complexity: O(g) results.
         return [gate.run(context, **kwargs) for gate in self._gates]

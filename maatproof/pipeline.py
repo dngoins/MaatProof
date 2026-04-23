@@ -34,6 +34,8 @@ before a production deployment.  This is the constitutional guarantee — see
 ``CONSTITUTION.md``.
 """
 
+import base64
+import binascii
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -51,13 +53,20 @@ class PipelineConfig:
 
     Attributes:
         name:                   Human-readable name for this pipeline.
+                                Must be non-empty.
         secret_key:             Symmetric key used by :class:`~maatproof.proof.ProofBuilder`
                                 and :class:`~maatproof.proof.ProofVerifier`.
+                                Must be a non-empty ``bytes`` value.
         model_id:               Identifier of the LLM model driving the agent layer.
         require_human_approval: Whether production deployments require explicit
                                 human approval (default: ``True``).
         max_fix_retries:        Maximum number of agent test-fix retries before
-                                escalating to a human.
+                                escalating to a human.  Must be ``>= 0``.
+
+    Raises:
+        ValueError: If ``secret_key`` is empty, ``name`` is empty, or
+            ``max_fix_retries`` is negative.
+        TypeError:  If ``secret_key`` is not a ``bytes`` instance.
     """
 
     name: str
@@ -65,6 +74,79 @@ class PipelineConfig:
     model_id: str = "maatproof-v1"
     require_human_approval: bool = True
     max_fix_retries: int = 3
+
+    def __post_init__(self) -> None:
+        """Validate required fields.  Called automatically by :mod:`dataclasses`."""
+        # Time complexity:  O(1) — fixed number of field checks.
+        # Space complexity: O(1).
+        if not isinstance(self.secret_key, (bytes, bytearray)):
+            raise TypeError(
+                "secret_key must be bytes; got "
+                f"{type(self.secret_key).__name__}"
+            )
+        if not self.secret_key:
+            raise ValueError("secret_key must not be empty")
+        if not self.name:
+            raise ValueError("name must not be empty")
+        if self.max_fix_retries < 0:
+            raise ValueError("max_fix_retries must be >= 0")
+        # Normalize bytearray to bytes so downstream HMAC is stable.
+        if isinstance(self.secret_key, bytearray):
+            self.secret_key = bytes(self.secret_key)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to a JSON-compatible dictionary.
+
+        ``secret_key`` is base64-encoded so the result is valid JSON.  Callers
+        remain responsible for protecting the serialized form as a secret.
+        """
+        # Time complexity:  O(|secret_key|) for base64 encoding; other fields are O(1).
+        # Space complexity: O(|secret_key|) for the encoded string.
+        return {
+            "name": self.name,
+            "secret_key_b64": base64.b64encode(self.secret_key).decode("ascii"),
+            "model_id": self.model_id,
+            "require_human_approval": self.require_human_approval,
+            "max_fix_retries": self.max_fix_retries,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PipelineConfig":
+        """Rehydrate a :class:`PipelineConfig` from the dict produced by :meth:`to_dict`.
+
+        Accepts either ``secret_key_b64`` (base64 string, preferred) or
+        ``secret_key`` (raw ``bytes``) for backwards compatibility.
+
+        Raises:
+            KeyError:   If neither ``secret_key_b64`` nor ``secret_key`` is provided.
+            ValueError: If ``secret_key_b64`` is not valid base64, or if
+                :meth:`__post_init__` validation fails.
+        """
+        # Time complexity:  O(|secret_key|) for base64 decoding.
+        # Space complexity: O(|secret_key|) for the decoded bytes.
+        if "secret_key_b64" in data:
+            try:
+                secret_key = base64.b64decode(
+                    data["secret_key_b64"], validate=True
+                )
+            except (binascii.Error, ValueError) as exc:
+                raise ValueError(
+                    "secret_key_b64 is not valid base64"
+                ) from exc
+        elif "secret_key" in data:
+            secret_key = data["secret_key"]
+        else:
+            raise KeyError(
+                "PipelineConfig.from_dict requires 'secret_key_b64' or 'secret_key'"
+            )
+
+        return cls(
+            name=data["name"],
+            secret_key=secret_key,
+            model_id=data.get("model_id", "maatproof-v1"),
+            require_human_approval=data.get("require_human_approval", True),
+            max_fix_retries=data.get("max_fix_retries", 3),
+        )
 
 
 class ACIPipeline:

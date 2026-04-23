@@ -51,7 +51,9 @@ class GateResult:
     timestamp: float = field(default_factory=time.time)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize to a dictionary."""
+        """Serialize to a JSON-compatible dictionary."""
+        # Time complexity:  O(1) — fixed-size field copy.
+        # Space complexity: O(1).
         return {
             "gate_name": self.gate_name,
             "status": self.status.value,
@@ -60,6 +62,25 @@ class GateResult:
             "artifact_hash": self.artifact_hash,
             "timestamp": self.timestamp,
         }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "GateResult":
+        """Rehydrate a :class:`GateResult` from :meth:`to_dict` output.
+
+        Raises:
+            KeyError:   If any required field is missing.
+            ValueError: If ``status`` is not a valid :class:`GateStatus`.
+        """
+        # Time complexity:  O(1) — constant-size field lookup.
+        # Space complexity: O(1).
+        return cls(
+            gate_name=data["gate_name"],
+            status=GateStatus(data["status"]),
+            duration_ms=data["duration_ms"],
+            details=data["details"],
+            artifact_hash=data["artifact_hash"],
+            timestamp=data.get("timestamp", time.time()),
+        )
 
 
 class DeterministicGate:
@@ -91,6 +112,10 @@ class DeterministicGate:
         Exceptions raised by ``check_fn`` are caught and recorded as failures
         so the pipeline always receives a result, never an uncaught exception.
         """
+        # Time complexity:  O(C + h) where C = cost of ``check_fn`` and
+        #                   h is linear in the serialized details size (for
+        #                   canonicalization + SHA-256 of the artifact hash).
+        # Space complexity: O(h) for the canonical JSON buffer.
         start = time.monotonic()
         try:
             passed, details = self._check_fn(**kwargs)
@@ -144,6 +169,8 @@ class DeterministicLayer:
 
         Returns *self* for method chaining.
         """
+        # Time complexity:  Amortized O(1) — list append.
+        # Space complexity: O(1) per gate reference stored.
         self._gates.append(gate)
         return self
 
@@ -163,14 +190,21 @@ class DeterministicLayer:
         Returns:
             Ordered list of :class:`GateResult` objects.
         """
+        # Time complexity:  O(sum of each gate's check cost) — gates are
+        #                   executed sequentially (no short-circuit).
+        # Space complexity: O(g) where g = number of registered gates.
         return [gate.run(**kwargs) for gate in self._gates]
 
     @staticmethod
     def all_passed(results: List[GateResult]) -> bool:
         """Return ``True`` if every result has :attr:`GateStatus.PASSED`."""
+        # Time complexity:  O(g) where g = len(results); short-circuits on first fail.
+        # Space complexity: O(1).
         return all(r.status == GateStatus.PASSED for r in results)
 
     @staticmethod
     def failed_gates(results: List[GateResult]) -> List[str]:
         """Return the names of all gates that did not pass."""
+        # Time complexity:  O(g) where g = len(results).
+        # Space complexity: O(f) where f = number of failing gates.
         return [r.gate_name for r in results if r.status != GateStatus.PASSED]

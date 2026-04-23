@@ -53,6 +53,15 @@ class ReasoningStep:
     conclusion reached.  The ``step_hash`` field is populated by
     :class:`ProofBuilder` and encodes this step's content *plus* the hash of
     every prior step, forming a tamper-evident chain.
+
+    Attributes:
+        step_id:    Zero-based position of this step in its chain.
+        context:    The input context the reasoner observed.
+        reasoning:  The reasoning applied to the context.
+        conclusion: The conclusion reached from that reasoning.
+        timestamp:  Unix timestamp (seconds since epoch) when the step was produced.
+        step_hash:  SHA-256 digest linking this step to the previous one
+                    (populated by :class:`ProofBuilder`, omitted from equality).
     """
 
     step_id: int
@@ -68,7 +77,13 @@ class ReasoningStep:
         The hash is computed over a canonical JSON representation of all step
         fields plus ``previous_hash``, ensuring the chain cannot be tampered
         with without invalidating every subsequent hash.
+
+        Determinism: identical inputs always produce the identical output
+        digest (property: `compute_hash(x) == compute_hash(x)` for all x).
         """
+        # Time complexity:  O(n) where n = |context| + |reasoning| + |conclusion|
+        #                   (JSON canonicalization + SHA-256 both scan the input once).
+        # Space complexity: O(n) for the canonical buffer before hashing.
         canonical = json.dumps(
             {
                 "step_id": self.step_id,
@@ -82,6 +97,37 @@ class ReasoningStep:
             separators=(",", ":"),
         )
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize this step to a plain dictionary (JSON-compatible)."""
+        # Time complexity:  O(1) — fixed number of fields copied by reference.
+        # Space complexity: O(1) extra — returned dict holds references only.
+        return {
+            "step_id": self.step_id,
+            "context": self.context,
+            "reasoning": self.reasoning,
+            "conclusion": self.conclusion,
+            "timestamp": self.timestamp,
+            "step_hash": self.step_hash,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ReasoningStep":
+        """Rehydrate a :class:`ReasoningStep` from the dict produced by :meth:`to_dict`.
+
+        Raises:
+            KeyError: If any required field is missing.
+        """
+        # Time complexity:  O(1) — constant-size field lookup and construction.
+        # Space complexity: O(1) extra — the new dataclass instance.
+        return cls(
+            step_id=data["step_id"],
+            context=data["context"],
+            reasoning=data["reasoning"],
+            conclusion=data["conclusion"],
+            timestamp=data["timestamp"],
+            step_hash=data.get("step_hash", ""),
+        )
 
 
 @dataclass
@@ -110,41 +156,29 @@ class ReasoningProof:
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize to a dictionary suitable for storage or transmission."""
+        # Time complexity:  O(k) where k = number of steps (one dict build per step).
+        # Space complexity: O(k) for the returned structure.
         return {
             "proof_id": self.proof_id,
             "model_id": self.model_id,
             "chain_id": self.chain_id,
-            "steps": [
-                {
-                    "step_id": s.step_id,
-                    "context": s.context,
-                    "reasoning": s.reasoning,
-                    "conclusion": s.conclusion,
-                    "timestamp": s.timestamp,
-                    "step_hash": s.step_hash,
-                }
-                for s in self.steps
-            ],
+            "steps": [s.to_dict() for s in self.steps],
             "root_hash": self.root_hash,
             "signature": self.signature,
             "created_at": self.created_at,
-            "metadata": self.metadata,
+            "metadata": dict(self.metadata),
         }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "ReasoningProof":
-        """Deserialize from a dictionary produced by :meth:`to_dict`."""
-        steps = [
-            ReasoningStep(
-                step_id=s["step_id"],
-                context=s["context"],
-                reasoning=s["reasoning"],
-                conclusion=s["conclusion"],
-                timestamp=s["timestamp"],
-                step_hash=s["step_hash"],
-            )
-            for s in data["steps"]
-        ]
+        """Deserialize from a dictionary produced by :meth:`to_dict`.
+
+        Round-trip invariant: ``ReasoningProof.from_dict(p.to_dict())`` reproduces
+        a proof whose ``verify`` result is identical to *p*.
+        """
+        # Time complexity:  O(k) where k = number of steps in the payload.
+        # Space complexity: O(k) for the rebuilt step list.
+        steps = [ReasoningStep.from_dict(s) for s in data["steps"]]
         return cls(
             proof_id=data["proof_id"],
             model_id=data["model_id"],
@@ -153,7 +187,7 @@ class ReasoningProof:
             root_hash=data["root_hash"],
             signature=data["signature"],
             created_at=data["created_at"],
-            metadata=data.get("metadata", {}),
+            metadata=dict(data.get("metadata", {})),
         )
 
 
@@ -171,6 +205,8 @@ class ProofBuilder:
     """
 
     def __init__(self, secret_key: bytes, model_id: str = "unknown"):
+        # Time complexity:  O(1) — just field assignment and a non-empty check.
+        # Space complexity: O(1).
         if not secret_key:
             raise ValueError("secret_key must not be empty")
         self._secret_key = secret_key
@@ -197,6 +233,12 @@ class ProofBuilder:
         Raises:
             ValueError: If *steps* is empty.
         """
+        # Time complexity:  O(k * m) where k = len(steps) and
+        #                   m = average total byte length of each step's fields.
+        #                   Each step performs one JSON canonicalization plus one
+        #                   SHA-256 pass, both linear in m.  The HMAC signature is
+        #                   O(1) on the fixed-length root hash + chain_id.
+        # Space complexity: O(k) for the rebuilt signed-step list.
         if not steps:
             raise ValueError("A proof requires at least one reasoning step")
 
@@ -253,6 +295,8 @@ class ProofVerifier:
     """
 
     def __init__(self, secret_key: bytes):
+        # Time complexity:  O(1).
+        # Space complexity: O(1).
         self._secret_key = secret_key
 
     def verify(self, proof: ReasoningProof) -> bool:
@@ -263,6 +307,9 @@ class ProofVerifier:
             ``False`` otherwise.  Uses constant-time comparison to resist
             timing attacks.
         """
+        # Time complexity:  O(k * m) mirroring :meth:`ProofBuilder.build` —
+        #                   k = number of steps, m = avg step field size.
+        # Space complexity: O(1) beyond the proof already in memory.
         if not proof.steps:
             return False
 
