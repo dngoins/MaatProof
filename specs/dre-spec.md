@@ -399,6 +399,50 @@ sequenceDiagram
 | Model profiles | Pinned per bundle, not latest |
 | Committee size | Governance-controlled, default 3-of-5 |
 
+## CommitteeCertificate vs DeterministicProof
+
+<!-- Addresses EDGE-D033 — reconcile the two proof types -->
+
+The DRE produces two related but distinct artifacts:
+
+| Artifact | Layer | Purpose | Who uses it |
+|---|---|---|---|
+| `CommitteeCertificate` (Rust) | Rust/consensus layer | Attests the DRE committee converged; carries Ed25519 member signatures over the `DecisionTuple` | Validator nodes — for rapid PoD consensus replay without re-executing LLMs |
+| `DeterministicProof` (Python) | Python orchestration layer | Extends `ReasoningProof` with multi-model consensus metadata; carries `prompt_hash`, `consensus_ratio`, `response_hash`, `model_ids` | AVM policy evaluator, auditors, off-chain verification tools |
+
+Both are produced from the same DRE execution run.  The `CommitteeCertificate`
+is the **on-chain / consensus-layer** evidence; the `DeterministicProof` is the
+**off-chain / audit-layer** record.
+
+```mermaid
+flowchart TD
+    DRE_RUN["DRE Execution\n(same PromptBundle)"]
+    CERT["CommitteeCertificate\n(Rust struct)\nEd25519 member sigs\nDecisionTuple hash"]
+    DPROOF["DeterministicProof\n(Python dataclass)\nprompt_hash, response_hash\nconsensus_ratio, model_ids"]
+    VALIDATORS["Validator Nodes\n(PoD consensus)"]
+    AVM_AUDIT["AVM / Audit Layer\n(ReasoningProof chain)"]
+
+    DRE_RUN --> CERT
+    DRE_RUN --> DPROOF
+    CERT --> VALIDATORS
+    DPROOF --> AVM_AUDIT
+```
+
+## DRE Committee vs Validator Committee
+
+<!-- Addresses EDGE-D031 -->
+
+These are **two independent committees** at different layers of the protocol:
+
+| Committee | Members | Task | Spec |
+|---|---|---|---|
+| **DRE Model Committee** (Layer 1) | N LLM model instances (default 3-of-5) | Converge on a `DecisionTuple` given the same `PromptBundle` | This spec (§Stage 2–4) |
+| **Validator Committee** (Layer 2) | Staked human/machine validators | Verify the `CommitteeCertificate` + VRP Merkle root; vote ACCEPT/REJECT/DISPUTE | `specs/pod-consensus-spec.md` |
+
+The DRE model committee's output (`CommitteeCertificate`) is an **input** to the
+validator committee — validators do not re-run the LLM committee; they verify
+the certificate using pinned deterministic checkers.
+
 ## References
 
 - Whitepaper §3.4 — Deterministic Reasoning Engine
@@ -406,3 +450,4 @@ sequenceDiagram
 - zkLLM [16]: Zero knowledge proofs for large language models
 - Cryptographic verifiability of end-to-end AI pipelines [17]
 - Proof-carrying code [13]
+- Issue #137 — DRE Documentation (CommitteeCertificate/DeterministicProof reconciliation)

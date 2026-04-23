@@ -276,7 +276,7 @@ A work item is "done" only when **all** of the following are true:
 - [ ] User story and acceptance criteria exist in the linked issue
 - [ ] Implementation matches acceptance criteria
 - [ ] Unit tests written and passing
-- [ ] Integration tests written and passing (where applicable)
+- [ ] Integration tests written and passing (where applicable) — see `specs/integration-test-spec.md` for the ACI/ACD integration test specification
 - [ ] CI pipeline passes (lint, compile, security scan)
 - [ ] PR review agent scores all dimensions ≥ 7
 - [ ] At least one human reviewer has approved the PR
@@ -284,6 +284,8 @@ A work item is "done" only when **all** of the following are true:
 - [ ] Configuration defined for all target environments
 - [ ] No unresolved review comments remain
 - [ ] PR merged via squash merge with clean commit message
+
+<!-- Addresses EDGE-IT-073, EDGE-IT-074 — integration test runnable locally and in CI -->
 
 ---
 
