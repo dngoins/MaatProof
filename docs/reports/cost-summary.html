@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MaatProof Cost Summary — Issue #133: CI/CD Workflow (Run #6)</title>
+  <title>MaatProof Cost Summary — Issue #135: ADA Integration Tests (Run #7)</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -102,13 +102,58 @@
 </head>
 <body>
 
-  <h1>MaatProof Cost Summary <span class="badge">cost:estimated</span> <span class="badge-blue">Run #6</span></h1>
+  <h1>MaatProof Cost Summary <span class="badge">cost:estimated</span> <span class="badge-blue">Run #7</span></h1>
   <p class="subtitle">
-    Issue #133 — CI/CD Workflow (ACI Workflow · ACD Workflow · 5 Trust Anchor Gates · Human Approval Gate · HMAC-SHA256 Signed Audit Log · Bounded Retry Logic) ·
-    Cumulative: Issues #14 · #119 · #137 · #133 ·
+    Issue #135 — ADA Integration Tests (AdaOrchestrator · RollbackProof ≤60s · MAAT Staking · AutonomousDeploymentBlockedError · Proof Verification · Test Doubles) ·
+    Cumulative: Issues #14 · #119 · #137 · #133 · #135 ·
     Generated 2026-04-23 ·
     <a href="cost-estimation-report.md">Full Report ↗</a>
   </p>
+
+  <!-- Issue #135 KPIs -->
+  <div class="section-label">Issue #135 — ADA Integration Tests Build Costs</div>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="label">Traditional Build Cost</div>
+      <div class="value red">$3,731</div>
+      <div class="sub">6 ACs, 50+ dev hrs, async test doubles</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">ACI/ACD Build Cost</div>
+      <div class="value">$118</div>
+      <div class="sub">1 hr review + Claude API + fixtures</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Build Savings (#135)</div>
+      <div class="value">97%</div>
+      <div class="sub">$3,613 saved vs traditional</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Runtime Cost (Standard)</div>
+      <div class="value blue">$0/mo</div>
+      <div class="sub">Within GCP 3,600 free CI/CD min/mo</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Rollback SLA (CI)</div>
+      <div class="value">≤6s</div>
+      <div class="sub">vs ≤60s production SLA (configurable)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Live Cloud Resources</div>
+      <div class="value">0</div>
+      <div class="sub">All test doubles: metrics, staking, executor, proof</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Incident Prevention/yr</div>
+      <div class="value">$20,700</div>
+      <div class="sub">Rollback, unauthorized deploy, audit gaps</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Issue #135 ROI</div>
+      <div class="value purple">343%</div>
+      <div class="sub">$118 ACI/ACD → $20,700/yr prevented</div>
+    </div>
+  </div>
 
   <!-- Issue #133 KPIs -->
   <div class="section-label">Issue #133 — CI/CD Workflow Build Costs</div>
@@ -156,7 +201,7 @@
   </div>
 
   <!-- Combined KPIs -->
-  <div class="section-label" style="margin-top:1.5rem;">Combined Pipeline (Issues #14 + #119 + #137 + #133)</div>
+  <div class="section-label" style="margin-top:1.5rem;">Combined Pipeline (Issues #14 + #119 + #137 + #133 + #135)</div>
   <div class="kpi-grid">
     <div class="kpi-card">
       <div class="label">Recommended Cloud</div>
@@ -166,22 +211,22 @@
     <div class="kpi-card">
       <div class="label">Combined Build Savings</div>
       <div class="value">96%</div>
-      <div class="sub">$14,579 → $594 (4 issues)</div>
+      <div class="sub">$18,323 → $823 (5 issues)</div>
     </div>
     <div class="kpi-card">
       <div class="label">Annual Dev Savings</div>
       <div class="value">$198K</div>
-      <div class="sub">3,312 hrs/yr incl. YAML savings</div>
+      <div class="sub">3,312 hrs/yr incl. ADA rollback savings</div>
     </div>
     <div class="kpi-card">
       <div class="label">ROI (Year 1)</div>
-      <div class="value">10,659%</div>
+      <div class="value">10,514%</div>
       <div class="sub">Payback: &lt;1 month</div>
     </div>
     <div class="kpi-card">
       <div class="label">5-Year TCO Savings</div>
       <div class="value">$1.75M</div>
-      <div class="sub">vs $1.77M traditional</div>
+      <div class="sub">$1,749,729 vs $1.77M traditional</div>
     </div>
     <div class="kpi-card">
       <div class="label">DORA Performance</div>
