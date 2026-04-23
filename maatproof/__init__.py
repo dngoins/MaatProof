@@ -13,6 +13,8 @@ Public API::
         AgentLayer, AgentGate, AgentResult, AgentDecision,
         OrchestratingAgent, PipelineEvent,
         ACIPipeline, ACDPipeline, PipelineConfig,
+        # Canonical schema models (maatproof.models)
+        AppendOnlyAuditLog,
     )
 """
 
@@ -31,6 +33,7 @@ from .layers.deterministic import (
     GateResult,
     GateStatus,
 )
+from .models import AppendOnlyAuditLog
 from .orchestrator import AuditEntry, OrchestratingAgent, PipelineEvent
 from .pipeline import ACDPipeline, ACIPipeline, PipelineConfig
 from .proof import ProofBuilder, ProofVerifier, ReasoningProof, ReasoningStep
@@ -63,6 +66,8 @@ __all__ = [
     "ACIPipeline",
     "ACDPipeline",
     "PipelineConfig",
+    # Canonical schema models
+    "AppendOnlyAuditLog",
     # Exceptions
     "MaatProofError",
     "ProofVerificationError",
