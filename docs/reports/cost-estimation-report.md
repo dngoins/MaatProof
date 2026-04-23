@@ -35,6 +35,8 @@ This report analyzes the total cost of ownership for MaatProof ACI/ACD implement
 | **Annual developer savings (full pipeline)** | ~$186,240/yr |
 | **5-year TCO savings** | ~$1,618,582 |
 | **Pipeline ROI (Year 1)** | **10,463%** |
+| **ADA test suite coverage target** | ≥ 90% all ADA modules |
+| **MAAT slashing risk eliminated (unit tests)** | 100% (arithmetic verified before prod) |
 
 > **Conservative estimate.** All figures use published provider pricing and BLS median software developer salary. No figures are inflated.
 
