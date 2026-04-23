@@ -36,25 +36,37 @@ deterministic layer.  Doing so is a constitutional violation.
 
 ---
 
-## §3 — Human Approval Invariant
+## §3 — Autonomous Deployment Authority
 
-**Human approval is always required before a production deployment.**
+**Production deployments are authorized by cryptographic proof, not human approval.**
 
-This is the single invariant that must never be removed from the pipeline, even
-as agent capabilities improve.  The reason is not technical capability — agents
-can decide — but **accountability**: a human must be in the chain so that there
-is a named party responsible for every production change.
+When the Deterministic Reasoning Engine (DRE) produces a consensus-backed,
+logic-verified, validator-attested deployment decision, the agent is authorized
+to deploy autonomously. No human is required in the loop.
 
-The agent may:
-- Request a deployment and provide its signed reasoning proof.
-- Explain *why* it believes the deployment is safe.
-- Present the full audit trail of deterministic gate results.
+The deployment authority is granted when ALL of the following are true:
 
-The agent may **not**:
-- Approve its own production deployment request.
-- Bypass this requirement under any circumstance, including emergency fixes.
+1. All deterministic gates pass (§2).
+2. The DRE reaches strong consensus (>= 80% model agreement).
+3. Every reasoning step passes the LogicVerifier (non-LLM validation).
+4. At least 3/5 independent validators attest to the proof's validity.
+5. The risk score is within the acceptable threshold for the target environment.
 
-Emergency fixes follow the same path with an accelerated human-approval SLA.
+The agent **must**:
+- Produce a `DeterministicProof` with prompt hash, consensus ratio, and response hash.
+- Obtain validator attestations before production deployment.
+- Monitor production metrics for 15 minutes post-deploy.
+- Auto-rollback if metrics degrade beyond thresholds (with a signed rollback proof).
+- Stake $MAAT proportional to the deployment risk score.
+
+The agent **must not**:
+- Deploy if any deterministic gate fails (§2 — non-negotiable).
+- Deploy without DRE consensus (reasoning must be reproducible).
+- Deploy if the LogicVerifier rejects any reasoning step.
+- Suppress rollback to protect its stake.
+
+See [Autonomous Deployment Authority spec](specs/autonomous-deployment-authority.md)
+for the full decision matrix and rollback protocol.
 
 ---
 
@@ -116,21 +128,35 @@ The audit log is the source of truth for compliance reviews.
 
 ---
 
-## §8 — Future: Full ACD
+## §8 — Full ACD: The Current Model
 
-Full Agent-Continuous Deployment — dropping the deterministic pipeline
-entirely — becomes possible when both conditions are met:
+MaatProof implements **Agent-Continuous Deployment** — the agent is the primary
+workflow.  The deterministic layer acts as a trust anchor, not the primary
+decision-maker.  Three systems work together to make this possible:
 
-1. **LLMs have cryptographically verifiable, deterministic reasoning**: the
-   same prompt always produces the same reasoning chain, and that chain can be
-   independently verified without trusting the LLM provider.
+1. **Deterministic Reasoning Engine (DRE)**: Produces reproducible,
+   consensus-backed reasoning by running the same canonical prompt on N
+   independent models and requiring M-of-N agreement.
+   See [DRE spec](specs/deterministic-reasoning-engine.md).
 
-2. **The human-approval invariant is encoded in law or regulation** for the
-   relevant compliance domain, making the constitutional requirement
-   self-enforcing rather than policy-enforcing.
+2. **Verifiable Reasoning Protocol (VRP)**: Every reasoning step is structured
+   as premises + inference rule + conclusion.  A non-LLM LogicVerifier checks
+   that each conclusion follows from its premises.  Independent validators
+   replay and attest to the proof.
+   See [VRP spec](specs/verifiable-reasoning-protocol.md).
 
-Until both conditions hold, the hybrid model described in this constitution is
-the responsible default.
+3. **Autonomous Deployment Authority (ADA)**: Replaces human approval with a
+   multi-signal scoring system.  When deterministic gates pass, DRE consensus
+   is strong, logic verification succeeds, and validators attest, the agent
+   deploys autonomously with a 15-minute auto-rollback window.
+   See [ADA spec](specs/autonomous-deployment-authority.md).
+
+The motto is no longer aspirational — it is the operating model:
+
+> ***"The day LLMs have cryptographically verifiable, deterministic reasoning
+> is the day you can drop the pipeline entirely."***
+
+That day is now.  The pipeline is replaced by proofs.
 
 ---
 
