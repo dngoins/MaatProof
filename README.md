@@ -220,14 +220,19 @@ graph LR
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per feature | $2,326 | $148 | **94%** |
+| Build cost / feature (Issue #120 — ADA Config) | $1,270 | $62 | **95%** |
+| Annual CI/CD cost (12 features/yr) | $304,392 | $2,436 | **99%** |
+| Annual developer hours (4-dev team) | 3,104 hrs overhead | ~310 hrs (review only) | **2,794 hrs saved** |
+| Annual developer savings | $186,240 lost | **$186,240 saved** | **$186K/yr** |
+| Annual infrastructure cost (GCP + Azure KV) | — | **$32** | — |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **98% faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| DORA rating | Low | **Elite** | — |
+| 5-year TCO savings | $1,521,960 | $14,248 | **$1.51M saved** |
+| DORA rating | Low | **Elite** | Top 10% globally |
 
-> _Last estimated: 2026-04-23 | [Full cost report →](docs/reports/cost-estimation-report.md)_
+> _Last estimated: 2026-04-23 · Issue #120 ([ADA] Configuration) · [Full cost report →](docs/reports/cost-estimation-report.md) · [Interactive charts →](docs/reports/cost-summary.html)_
 
 ---
 
