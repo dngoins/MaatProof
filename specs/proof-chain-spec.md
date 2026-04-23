@@ -849,6 +849,9 @@ The following scenarios require architectural changes and are tracked separately
 | EDGE-D087 | Tracked (§11.3) | `ProofBuilder.__init__()` only checks `if not secret_key` — does not enforce 32-byte minimum from §3 |
 | EDGE-D085 | Tracked (§11.4) | `ACDPipeline` and `OrchestratingAgent` docstrings contradict Constitution §3 on human approval |
 | EDGE-D031–D035 | To be filed | Multi-tenancy isolation: cross-tenant proof reuse, chain_id collision, tenant-scoped audit access |
+| EDGE-VS063 | #336 | Python-layer confidence score tracking for agent decisions |
+| EDGE-VS066 | #337 | HMAC key compromise detection and emergency re-signing procedure |
+| EDGE-VS068 | #338 | Proof completeness validation — verifying all required reasoning steps present |
 
 <!-- Addresses EDGE-IT-009, EDGE-IT-027, EDGE-IT-042, EDGE-IT-055 — see specs/integration-test-spec.md §10 -->
 
