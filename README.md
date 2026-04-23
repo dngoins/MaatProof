@@ -218,28 +218,24 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issue #119: Core Pipeline — ProofBuilder, ProofVerifier, ReasoningChain, OrchestratingAgent, DeterministicLayer (5 gates), AgentLayer (4 agents), ACIPipeline, ACDPipeline_
+> _Issue #31: VRP Data Model/Schema — VerifiableStep, InferenceRule (7 rules), AttestationRecord (HMAC-SHA256 + ECDSA P-256), VerificationLevel, ProofChain_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost — Core Pipeline (#119) | $6,741 | $247 | **96%** |
-| Build cost — Data Model (#14) | $2,326 | $148 | **94%** |
-| Annual CI/CD cost (standard, GCP) | ~$27K/yr (12 features) | ~$349/yr | **99%** |
-| Annual developer hours (CI/CD tasks) | 3,104 hrs | ~0 hrs | **3,104 hrs reclaimed** |
+| Build cost per issue (VRP Data Model #31) | $3,167 | $195 | **94%** |
+| Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
-| Lead time for changes | 5 days | 2 hours | **98% faster** |
+| Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Rollback activation | 30–60 min | 90 seconds | **97% faster** |
-| Audit trail completeness | ~40% | 100% | **+60%** |
-| DeterministicLayer gate bypass | Possible | Impossible (EDGE-119 fail-closed) | **100% prevention** |
-| AI API runtime cost (standard) | N/A | $27/mo (Claude Sonnet) | — |
-| Year 1 ROI | — | — | **10,463%** |
-| 5-year TCO savings | — | — | **$1,618,582** |
+| Cryptographic test coverage | 40% manual | 95% automated | **+55pp** |
+| VRP runtime cost (GCP standard) | — | **$0.16/mo** | ECDSA P-256 incl. |
+| Annual infra cost (100 MAU, GCP) | — | **$31/yr** | — |
 | DORA rating | Low | **Elite** | — |
+| Year 1 ROI | — | — | **12,507%** |
+| 5-year TCO savings | — | — | **$1,832,532** |
 
-> _Last estimated: 2026-04-23 · Issue #119 [Core Pipeline] | [Full cost report →](docs/reports/cost-estimation-report.md) | [HTML summary →](docs/reports/cost-summary.html)_
-
+> _Last estimated: 2026-04-23 · Issue #31 [VRP Data Model / Schema] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Getting Started
