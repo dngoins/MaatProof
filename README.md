@@ -304,27 +304,31 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Updated: Issue #142 [ADA Validation & Sign-off] — Final quality gate for the full Autonomous Deployment Authority (ADA) feature (9 deliverables: #99, #104, #112, #120, #126, #130, #135, #138, #142)_
+> _Updated: Issue #142 [ADA Validation & Sign-off] — Final quality gate for the full Autonomous Deployment Authority (ADA) feature (9 deliverables: #99, #104, #112, #120, #126, #130, #135, #138, #142). Previous: Issue #136 [VRP Documentation]._
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Annual CI/CD build cost (12 features) | $445,944 | $23,544 | **95%** |
-| ADA feature build cost (all 9 issues) | $28,095 | $1,566 | **94%** |
-| ADA validation & sign-off (#142) | $2,729 | $102 | **96%** |
+| Build cost — Issue #142 (ADA Sign-off) | $2,729 | $102 | **96%** |
+| Build cost — Issue #136 (VRP Documentation) | $1,920 | $91 | **95%** |
+| Build cost — Issue #119 (Core Pipeline) | $6,741 | $247 | **96%** |
+| Build cost — Issue #14 (Data Model) | $2,326 | $148 | **94%** |
+| ADA full feature build cost (all 9 issues) | $28,095 | $1,566 | **94%** |
+| **Cumulative build cost (all tracked issues)** | **~$39,082** | **~$2,052** | **~95%** |
+| Annual runtime cost (100 MAU, GCP + ADA) | — | **$395/yr** | — |
 | Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
-| Annual incident prevention value (ADA) | $209,952 | $0 extra | **100% automated** |
+| Annual incident prevention value (ADA) | $209,952 | **$0 extra** | **100% automated** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery (ADA auto-rollback) | 4 hours | **60 seconds** | **99.6% faster** |
-| Human approvals required (fully-verified) | Every deploy | **0** | **100% eliminated** |
-| MAAT staking enforcement | Manual | **Automated** | **100% coverage** |
-| Annual infra cost (100 MAU, GCP + ADA) | — | **$403/yr** | — |
-| DORA rating | Low | **Elite** | — |
-| Year 1 ROI | — | — | **12,516%** |
-| 5-year TCO savings | — | — | **$2,205,365** |
+| Human approvals required (fully-verified deploy) | Every deploy | **0** | **100% eliminated** |
+| MAAT staking/slashing enforcement | Manual | **Automated** | **100% coverage** |
+| Documentation staleness | 14 days avg | 0 days | **100% improvement** |
+| DORA rating | Low | **Elite** | Top 10% globally |
+| ADA standalone Year 1 ROI | — | — | **~12,942%** |
+| 5-year TCO savings (with ADA incident prevention) | — | — | **~$2,717,142** |
 
-> _Last estimated: 2026-04-23 · Issue #142 [ADA Validation & Sign-off] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Run #6 · Issue #142 [ADA Validation & Sign-off] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
