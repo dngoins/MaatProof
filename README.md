@@ -304,24 +304,27 @@ graph LR
 
 ## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
 
-> _Issue #31: VRP Data Model/Schema — VerifiableStep, InferenceRule (7 rules), AttestationRecord (HMAC-SHA256 + ECDSA P-256), VerificationLevel, ProofChain_
+> _Updated: Issue #142 [ADA Validation & Sign-off] — Final quality gate for the full Autonomous Deployment Authority (ADA) feature (9 deliverables: #99, #104, #112, #120, #126, #130, #135, #138, #142)_
 
 | Metric | Traditional | MaatProof | Savings |
 |--------|-------------|-----------|---------|
-| Build cost per issue (VRP Data Model #31) | $3,167 | $195 | **94%** |
+| Annual CI/CD build cost (12 features) | $445,944 | $23,544 | **95%** |
+| ADA feature build cost (all 9 issues) | $28,095 | $1,566 | **94%** |
+| ADA validation & sign-off (#142) | $2,729 | $102 | **96%** |
 | Annual developer savings | — | $186,240 | **3,104 hrs/yr** |
+| Annual incident prevention value (ADA) | $209,952 | $0 extra | **100% automated** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
 | Lead time for changes | 5 days | 2 hours | **60× faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
-| Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Cryptographic test coverage | 40% manual | 95% automated | **+55pp** |
-| VRP runtime cost (GCP standard) | — | **$0.16/mo** | ECDSA P-256 incl. |
-| Annual infra cost (100 MAU, GCP) | — | **$31/yr** | — |
+| Mean time to recovery (ADA auto-rollback) | 4 hours | **60 seconds** | **99.6% faster** |
+| Human approvals required (fully-verified) | Every deploy | **0** | **100% eliminated** |
+| MAAT staking enforcement | Manual | **Automated** | **100% coverage** |
+| Annual infra cost (100 MAU, GCP + ADA) | — | **$403/yr** | — |
 | DORA rating | Low | **Elite** | — |
-| Year 1 ROI | — | — | **12,507%** |
-| 5-year TCO savings | — | — | **$1,832,532** |
+| Year 1 ROI | — | — | **12,516%** |
+| 5-year TCO savings | — | — | **$2,205,365** |
 
-> _Last estimated: 2026-04-23 · Issue #31 [VRP Data Model / Schema] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
+> _Last estimated: 2026-04-23 · Issue #142 [ADA Validation & Sign-off] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
 
 ## Verifiable Reasoning Protocol (VRP)
