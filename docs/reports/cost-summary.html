@@ -17,12 +17,13 @@
       --yellow: #d29922;
       --red: #f85149;
       --purple: #bc8cff;
+      --orange: #ffa657;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       line-height: 1.6;
       padding: 2rem;
     }
@@ -67,6 +68,8 @@
     Generated 2026-04-23 (Run #5) ·
     <a href="cost-estimation-report.md">Full Report ↗</a>
   </p>
+  <p style="margin-top:0.75rem; color: var(--muted);">Covers Issues #14 (Data Model) · #119 (Core Pipeline) · #143 (Integration Tests)</p>
+</header>
 
   <!-- Issue #132 KPIs -->
   <div class="section-label">Issue #132 — VRP Integration Tests Build Costs</div>
@@ -245,19 +248,33 @@
     <p>VRP integration tests use test-double validators exclusively — <strong>zero live cloud resource cost</strong> per acceptance criteria. The entire test suite runs in &lt;100ms of cryptographic CPU (HMAC-SHA256 + ECDSA P-256). CI cost at standard scale: <strong>$0/yr</strong> (within GCP Cloud Build free tier of 3,600 min/mo). The primary value is defect detection: one production VRP bug averted (avg $6K remediation) yields <strong>3,948% ROI</strong> on the $156 ACI/ACD build cost.</p>
   </div>
 
-  <!-- DORA Table -->
-  <h2>DORA Metrics — MaatProof vs Traditional</h2>
+<!-- Build Cost Table -->
+<div class="table-section">
+  <h2>Build Cost Breakdown — All Issues</h2>
   <table>
     <thead>
-      <tr><th>Metric</th><th>Traditional</th><th>MaatProof ACI/ACD</th><th>Improvement</th><th>DORA Tier</th></tr>
+      <tr><th>Issue / Scope</th><th>Traditional Cost</th><th>ACI/ACD Cost</th><th>Savings</th><th>Savings %</th></tr>
     </thead>
     <tbody>
-      <tr><td>Deployment Frequency</td><td class="lose">1× / week</td><td class="win">10× / day</td><td class="win">70× more frequent</td><td class="win">Elite</td></tr>
-      <tr><td>Lead Time for Changes</td><td class="lose">5 days</td><td class="win">2 hours</td><td class="win">60× faster</td><td class="win">Elite</td></tr>
-      <tr><td>Change Failure Rate</td><td class="lose">15%</td><td class="win">3%</td><td class="win">80% reduction</td><td class="win">Elite</td></tr>
-      <tr><td>Mean Time to Recovery</td><td class="lose">4 hours</td><td class="win">15 minutes</td><td class="win">94% faster</td><td class="win">Elite</td></tr>
+      <tr><td>#14 — Data Model / Schema</td><td class="cost">$2,326</td><td class="cost">$148</td><td class="savings">$2,178</td><td class="savings">94%</td></tr>
+      <tr><td>#119 — Core Pipeline</td><td class="cost">$6,741</td><td class="cost">$247</td><td class="savings">$6,494</td><td class="savings">96%</td></tr>
+      <tr><td>#143 — Integration Tests</td><td class="cost">$4,871</td><td class="cost">$225</td><td class="savings">$4,646</td><td class="savings">95%</td></tr>
+      <tr><td>Infrastructure / IaC</td><td class="cost">$3,600</td><td class="cost">$240</td><td class="savings">$3,360</td><td class="savings">93%</td></tr>
+      <tr><td>Configuration</td><td class="cost">$1,440</td><td class="cost">$96</td><td class="savings">$1,344</td><td class="savings">93%</td></tr>
+      <tr><td>Unit Tests</td><td class="cost">$2,880</td><td class="cost">$192</td><td class="savings">$2,688</td><td class="savings">93%</td></tr>
+      <tr><td>CI/CD Setup</td><td class="cost">$2,400</td><td class="cost">$160</td><td class="savings">$2,240</td><td class="savings">93%</td></tr>
+      <tr><td>Documentation</td><td class="cost">$1,920</td><td class="cost">$128</td><td class="savings">$1,792</td><td class="savings">93%</td></tr>
+      <tr><td>Validation and Sign-off</td><td class="cost">$2,400</td><td class="cost">$160</td><td class="savings">$2,240</td><td class="savings">93%</td></tr>
+      <tr style="font-weight:700; border-top: 2px solid var(--border);">
+        <td>TOTAL (Full Feature)</td>
+        <td class="cost">$28,578</td>
+        <td class="cost">$1,597</td>
+        <td class="savings">$26,981</td>
+        <td class="savings">94%</td>
+      </tr>
     </tbody>
   </table>
+</div>
 
   <!-- Issue #132 VRP-Specific Improvements -->
   <h2>Issue #132 — VRP Integration Test Workflow Improvements</h2>
@@ -275,12 +292,14 @@
       <tr><td>Test-double vs real validator drift</td><td class="lose">Chronic (months to detect)</td><td class="win">Spec-driven regeneration on model change</td><td class="win">&lt;1 hr drift detection</td></tr>
     </tbody>
   </table>
+</div>
 
-  <!-- Cloud Comparison -->
-  <h2>Cloud Provider Recommendation</h2>
+<!-- DORA Metrics Table -->
+<div class="table-section">
+  <h2>DORA Metrics Comparison</h2>
   <table>
     <thead>
-      <tr><th>Resource</th><th>Azure</th><th>AWS</th><th>GCP</th><th>Winner</th></tr>
+      <tr><th>Metric</th><th>Traditional</th><th>MaatProof ACI/ACD</th><th>Improvement</th></tr>
     </thead>
     <tbody>
       <tr><td>Serverless Functions</td><td>$0.20/M exec</td><td>$0.20/M req</td><td>$0.40/M inv</td><td class="win">Azure / AWS</td></tr>
@@ -293,6 +312,7 @@
       <tr><td>Egress (first 10 TB)</td><td>$0.087/GB</td><td>$0.090/GB</td><td class="win">$0.085/GB</td><td class="win">GCP</td></tr>
     </tbody>
   </table>
+</div>
 
   <div class="recommendation">
     <h4>🏆 Recommendation: GCP-primary + AWS CloudWatch for logs</h4>
@@ -303,16 +323,20 @@
   <h2>Revenue Potential (SaaS — Cumulative Pipeline)</h2>
   <table>
     <thead>
-      <tr><th>Tier</th><th>Price/mo</th><th>Yr 1 Customers</th><th>Total Cost/Customer</th><th>Gross Margin</th><th>Monthly Revenue</th></tr>
+      <tr><th>Tier</th><th>Price/mo</th><th>Cost to Serve/mo</th><th>Gross Margin</th><th>Est. Year 1 Customers</th><th>Annual Revenue</th></tr>
     </thead>
     <tbody>
-      <tr><td>Free</td><td>$0</td><td>2,000</td><td>$0.13</td><td>—</td><td>$0</td></tr>
-      <tr><td>Pro</td><td>$49</td><td>150</td><td>$4.31</td><td class="win">91%</td><td class="win">$7,350</td></tr>
-      <tr><td>Team</td><td>$199</td><td>40</td><td>$17.20</td><td class="win">91%</td><td class="win">$7,960</td></tr>
-      <tr><td>Enterprise</td><td>$1,499</td><td>8</td><td>$85</td><td class="win">94%</td><td class="win">$11,992</td></tr>
-      <tr style="font-weight:bold;"><td colspan="5">Total MRR (Month 12)</td><td class="win">$27,302</td></tr>
+      <tr><td>Free</td><td>$0</td><td>$0.13</td><td>—</td><td>2,000</td><td>$0</td></tr>
+      <tr><td>Pro</td><td>$49</td><td>$5.03</td><td class="savings">90%</td><td>150</td><td class="savings">$88,200</td></tr>
+      <tr><td>Team</td><td>$199</td><td>$20.80</td><td class="savings">90%</td><td>40</td><td class="savings">$95,520</td></tr>
+      <tr><td>Enterprise</td><td>$1,499</td><td>$103</td><td class="savings">93%</td><td>8</td><td class="savings">$143,904</td></tr>
+      <tr style="font-weight:700; border-top: 2px solid var(--border);">
+        <td colspan="4">Total ARR (Year 1)</td>
+        <td colspan="2" class="savings">$327,624</td>
+      </tr>
     </tbody>
   </table>
+</div>
 
   <footer>
     <p>
@@ -325,10 +349,9 @@
     </p>
   </footer>
 
-  <script>
-    Chart.defaults.color = '#c9d1d9';
-    Chart.defaults.borderColor = '#30363d';
-    Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+<script>
+  Chart.defaults.color = '#c9d1d9';
+  Chart.defaults.borderColor = '#30363d';
 
     // 1. VRP Verification Level Cost Bar
     new Chart(document.getElementById('vrpLevelCostBar'), {
@@ -403,15 +426,8 @@
           { label: '#132 CI ($)', data: [960, 690, 302, 302], backgroundColor: ['rgba(188,140,255,0.8)','rgba(188,140,255,0.8)','rgba(188,140,255,0.8)','rgba(188,140,255,0.8)'], borderRadius: 4 }
         ]
       },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'top' } },
-        scales: {
-          y: { beginAtZero: true, stacked: true, title: { display: true, text: 'Annual Cost (USD)' }, grid: { color: '#30363d' } },
-          x: { stacked: true, grid: { color: '#30363d' } }
-        }
-      }
-    });
+    },
+  });
 
     // 5. Issue #132 Build Cost Bar
     new Chart(document.getElementById('buildCostBar132'), {
@@ -423,15 +439,8 @@
           { label: 'ACI/ACD ($)', data: [90, 0, 0, 0, 0, 0, 0, 27], backgroundColor: '#3fb950', borderRadius: 4 }
         ]
       },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'top' } },
-        scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Cost (USD)' }, grid: { color: '#30363d' } },
-          x: { grid: { color: '#30363d' }, ticks: { font: { size: 9 } } }
-        }
-      }
-    });
+    },
+  });
 
     // 6. All Issues Cost Bar
     new Chart(document.getElementById('allIssuesCostBar'), {
@@ -443,15 +452,16 @@
           { label: 'ACI/ACD ($)', data: [148, 248, 156, 240, 96, 192, 160, 128, 160], backgroundColor: '#3fb950', borderRadius: 4 }
         ]
       },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'top' } },
-        scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Cost (USD)' }, grid: { color: '#30363d' } },
-          x: { grid: { color: '#30363d' }, ticks: { font: { size: 9 } } }
-        }
-      }
-    });
+      scales: {
+        y: {
+          type: 'logarithmic',
+          ticks: { callback: function(v) { return '$' + v.toLocaleString(); } },
+          grid: { color: 'rgba(48,54,61,0.5)' },
+        },
+        x: { grid: { color: 'rgba(48,54,61,0.3)' } },
+      },
+    },
+  });
 
     // 7. Component Cost Horizontal Bar
     new Chart(document.getElementById('componentCostBar'), {
@@ -460,16 +470,15 @@
         labels: ['OrchestratingAgent (Cloud Run)', 'DeploymentDecisionAgent (Claude)', 'TestFixerAgent (Claude)', 'CodeReviewerAgent (Claude)', 'AppendOnlyAuditLog (Firestore)', 'RollbackAgent (Claude)', 'VRP Integration Tests CI', 'ProofBuilder/Verifier (CPU)', 'DeterministicLayer (in-process)'],
         datasets: [{ label: 'Monthly Cost ($)', data: [1.73, 11.25, 8.50, 3.50, 0.10, 0.50, 0.00, 0.01, 0.00], backgroundColor: ['#58a6ff','#bc8cff','#bc8cff','#bc8cff','#3fb950','#bc8cff','#d29922','#d29922','#3fb950'], borderRadius: 4 }]
       },
-      options: {
-        responsive: true,
-        indexAxis: 'y',
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `$${ctx.parsed.x.toFixed(2)}/mo` } } },
-        scales: {
-          x: { beginAtZero: true, title: { display: true, text: 'Monthly Cost (USD)' }, grid: { color: '#30363d' } },
-          y: { grid: { color: '#30363d' }, ticks: { font: { size: 10 } } }
-        }
-      }
-    });
+      scales: {
+        y: {
+          ticks: { callback: function(v) { return '$' + v + 'K'; } },
+          grid: { color: 'rgba(48,54,61,0.5)' },
+        },
+        x: { grid: { color: 'rgba(48,54,61,0.3)' } },
+      },
+    },
+  });
 
     // 8. Cost Split Donut
     new Chart(document.getElementById('costSplitDonut'), {
@@ -478,14 +487,9 @@
         labels: ['AI API — Claude Sonnet ($23.75/mo, 88%)', 'OrchestratingAgent — Cloud Run ($1.73/mo, 7%)', 'Firestore Audit Log ($0.10/mo, 0.4%)', 'CI/CD + Monitoring + Other ($1.74/mo, 4.6%)'],
         datasets: [{ data: [23.75, 1.73, 0.10, 1.74], backgroundColor: ['#bc8cff', '#58a6ff', '#3fb950', '#d29922'], borderColor: '#0d1117', borderWidth: 3 }]
       },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { position: 'bottom', labels: { font: { size: 10 }, boxWidth: 12 } },
-          tooltip: { callbacks: { label: ctx => `${ctx.label}: $${ctx.parsed.toFixed(2)}/mo` } }
-        }
-      }
-    });
+      plugins: { legend: { position: 'top' } },
+    },
+  });
 
     // 9. Cost Projection Line
     new Chart(document.getElementById('costProjectionLine'), {
@@ -519,15 +523,8 @@
           { label: 'Cumulative Savings ($K)', data: [-3.26, 23.7, 158.7, 320.8, 645.1, 969.4, 1618.0], borderColor: '#58a6ff', borderDash: [6, 3], tension: 0.3, fill: false }
         ]
       },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'top' } },
-        scales: {
-          y: { title: { display: true, text: 'Cumulative Cost ($K)' }, grid: { color: '#30363d' } },
-          x: { grid: { color: '#30363d' } }
-        }
-      }
-    });
-  </script>
+    },
+  });
+</script>
 </body>
 </html>
