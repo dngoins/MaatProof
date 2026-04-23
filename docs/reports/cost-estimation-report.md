@@ -1,10 +1,10 @@
 # MaatProof Cost Estimation Report
 
-**Issues Covered:** [ACI/ACD Engine] Data Model / Schema (#14) · [MaatProof ACI/ACD Engine - Core Pipeline] Core Implementation (#119) · [Deterministic Reasoning Engine (DRE)] Configuration (#122)  
-**Generated:** 2026-04-23 (refreshed for Issue #122)  
+**Issues Covered:** [ACI/ACD Engine] Data Model / Schema (#14) · [Core Pipeline] Core Implementation (#119) · [DRE] Configuration (#122) · [Core Pipeline] Validation & Sign-off (#145)  
+**Generated:** 2026-04-23 (refreshed for Issues #122 + #145)  
 **Agent:** Cost Estimator Agent  
 **Status:** `spec:passed` → `cost:estimated`  
-**Run:** #5 (Issue #122 — DRE Configuration)
+**Run:** #5 (Issues #122 — DRE Configuration · #145 — Validation & Sign-off · Final Gate)
 
 ---
 
@@ -199,6 +199,30 @@ Issue #119 implements 8 major components (`ProofBuilder`, `ProofVerifier`, `Reas
 
 ### 2.3 Issue #122 — DRE Configuration Build Costs
 
+Issue #122 defines configuration for the Deterministic Reasoning Engine: YAML schemas for `dev`, `uat`, and `prod` environments; startup validation (`DREConfigError` on invalid config); secrets loading via `python-dotenv`; and multi-model committee configuration (`model_ids`, `temperature=0`, `seed`, `top_p=1.0`, consensus thresholds). Addresses EDGE-DRE-001 through EDGE-DRE-060.
+
+| Cost Category | Traditional CI/CD | ACI/ACD with MaatProof | Savings |
+|---------------|-------------------|------------------------|---------|
+| **Dev hrs — config schema design** | 4 hrs × $60 = **$240** | 1 hr review × $60 = **$60** | $180 (75%) |
+| **Dev hrs — YAML config files (3 envs)** | 3 hrs × $60 = **$180** | Automated → **$0** | $180 (100%) |
+| **Dev hrs — DREConfigLoader + validation** | 4 hrs × $60 = **$240** | Automated → **$0** | $240 (100%) |
+| **Dev hrs — DREConfigError + error handling** | 2 hrs × $60 = **$120** | Automated → **$0** | $120 (100%) |
+| **Dev hrs — python-dotenv integration** | 2 hrs × $60 = **$120** | Automated → **$0** | $120 (100%) |
+| **Dev hrs — env-name mismatch + hot-reload guards** | 3 hrs × $60 = **$180** | Automated → **$0** | $180 (100%) |
+| **CI/CD pipeline minutes** | 60 min × $0.008 = **$0.48** | 75 min × $0.008 = **$0.60** | -$0.12 |
+| **Code review hours** | 3 hrs × $60 = **$180** | Automated (agent) = **$0** | $180 (100%) |
+| **QA testing hours** (60 edge cases) | 4 hrs × $45 = **$180** | Automated (agent) = **$0** | $180 (100%) |
+| **Documentation hours** | 2 hrs × $40 = **$80** | Automated (agent) = **$0** | $80 (100%) |
+| **AI agent API costs** (Claude Sonnet) | N/A | ~80K input + 25K output tokens = **$0.62** | — |
+| **Spec / edge case validation** (EDGE-DRE-001 to -060) | 6 hrs × $60 = **$360** | Automated (agent) = **$3.00** est. | $357 (99%) |
+| **Infrastructure setup** (dotenv, secrets refs) | 1 hr × $60 = **$60** | Template-based (15 min) = **$10** | $50 (83%) |
+| **Re-work (avg 30% defect rate)** | 5.3 hrs × $60 = **$318** | ACI/ACD reduces to ~5% = **$27** | $291 (91%) |
+| **TOTAL (Issue #122)** | **$1,908** | **$102** | **$1,806 (95%)** |
+
+> **Startup validation ROI:** Catching misconfiguration at startup (rather than at LLM call time) avoids ~$60/incident in developer diagnosis time + $1.20 in failed API calls. At 1 incident/week this saves **$3,172/yr** — 31× the build cost of Issue #122.
+
+### 2.4 Issue #145 — Validation & Sign-off Build Costs
+
 Issue #122 defines configuration for the Deterministic Reasoning Engine: YAML schemas for `dev`, `uat`, and `prod` environments; startup validation (`DREConfigError` on invalid config); secrets loading via `python-dotenv`; and multi-model committee configuration (`model_ids`, `temperature=0`, `seed`, `top_p=1.0`, consensus thresholds).
 
 | Cost Category | Traditional CI/CD | ACI/ACD with MaatProof | Savings |
@@ -223,20 +247,22 @@ Issue #122 defines configuration for the Deterministic Reasoning Engine: YAML sc
 
 > **Note:** Config validation is a force-multiplier — early detection of misconfigured `temperature`, invalid `model_ids`, or missing consensus thresholds prevents costly runtime failures downstream. The `DREConfigError` on startup pattern eliminates silent misconfiguration bugs.
 
-### 2.4 Full Pipeline Build Costs (All 9 Issues per Feature)
+### 2.5 Full Pipeline Build Costs (All Issues)
 
 | Scope | Traditional | ACI/ACD | Savings |
 |-------|-------------|---------|---------|
 | Issue #14 (Data Model) | $2,326 | $148 | $2,178 |
-| Issue #119 (Core Pipeline) | $6,741 | $248 | $6,493 |
-| Issue #122 (DRE Configuration) | $1,908 | $102 | $1,806 |
-| Infrastructure / IaC (#117) | $3,600 | $240 | $3,360 |
-| Unit Tests | $2,880 | $192 | $2,688 |
-| Integration Tests | $3,600 | $240 | $3,360 |
-| CI/CD Workflow | $2,400 | $160 | $2,240 |
-| Documentation | $1,920 | $128 | $1,792 |
-| Validation | $2,400 | $160 | $2,240 |
-| **TOTAL (full feature)** | **$27,775** | **$1,618** | **$26,157 (94%)** |
+| Issue #119 (Core Pipeline) | $6,741 | $247 | $6,494 |
+| **Issue #122 (DRE Configuration)** | **$1,908** | **$102** | **$1,806** |
+| Issue #145 (Validation & Sign-off) | $1,590 | $75 | $1,515 |
+| Infrastructure / IaC (#125) | $3,600 | $240 | $3,360 |
+| Configuration (#129) | $1,440 | $96 | $1,344 |
+| Unit Tests (#139) | $2,880 | $192 | $2,688 |
+| Integration Tests (#143) | $3,600 | $240 | $3,360 |
+| CI/CD Setup (#133) | $2,400 | $160 | $2,240 |
+| Documentation (#144) | $1,920 | $128 | $1,792 |
+| Cryptographic layer (#113) | $2,800 | $161 | $2,639 |
+| **TOTAL (full feature, incl. Issue #122)** | **$31,205** | **$1,789** | **$29,416 (94%)** |
 
 ---
 
