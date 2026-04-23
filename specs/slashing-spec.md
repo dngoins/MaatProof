@@ -215,6 +215,94 @@ become permanently locked or redirected.
 5. **Emit event**: `SlashingContractUpdated(address indexed oldAddress, address indexed newAddress)`
    is emitted on every change for auditability.
 
+## Permanently Offline Validator Stake Recovery
+
+<!-- Addresses EDGE-ADA-004 -->
+
+When a validator operator goes permanently offline (e.g., hardware failure, business
+closure, key loss), their staked $MAAT can become permanently locked in the staking
+contract, reducing the effective circulating supply indefinitely.
+
+### Detection
+
+A validator is considered **permanently offline** when:
+- `VAL_LIVENESS` slashes reduce their stake to the minimum threshold
+- AND the operator has not responded within 3 consecutive epochs (approximately 3,000 blocks)
+- AND no key rotation has been submitted in the past 180 days
+
+The validator's status is set to `DEREGISTERED_INACTIVE` automatically after these
+conditions are met.
+
+### Recovery Path
+
+```mermaid
+flowchart TD
+    DETECT[Validator inactive > 3 epochs] --> SLASH[VAL_LIVENESS slashes\naccumulate each epoch\n5% per epoch]
+    SLASH --> CHECK{Stake below\nminimum threshold?}
+    CHECK -->|Yes| DEREGISTER[Auto-deregister validator\nset status = DEREGISTERED_INACTIVE]
+    CHECK -->|No| CONTINUE[Continue liveness\nslashing each epoch]
+    DEREGISTER --> LOCK[Remaining stake locked\nfor 30-day challenge window]
+    LOCK --> EXPIRE[After 30 days with no\noperator response]
+    EXPIRE --> DAO_RECLAIM[DAO governance vote to\nclaim remaining locked stake]
+    DAO_RECLAIM -->|2/3 vote| DISTRIBUTE[50% burned; 50% to\nDAO treasury]
+```
+
+**Important**: The validator's participation rate drops to 0% as they are excluded
+from quorum computation when `INACTIVE`. Other validators continue to achieve
+2/3 supermajority on the remaining active stake.
+
+### Emergency Re-activation
+
+If an operator recovers (e.g., recovers their key via a cold backup), they may
+re-register with a new DID and stake. The old deregistered DID remains on-chain
+for audit purposes.
+
+---
+
+## Zero-Address Transfer Protection
+
+<!-- Addresses EDGE-ADA-010 -->
+
+`MaatToken.transfer()` and `MaatToken.transferFrom()` MUST reject transfers to
+`address(0)` to prevent unintentional token burns via the standard ERC-20 transfer
+path. Unlike the intentional `burn()` function, transfers to address(0) via the
+standard transfer interface are almost always programming errors.
+
+```solidity
+// In MaatToken.sol
+function _beforeTokenTransfer(
+    address from,
+    address to,
+    uint256 amount
+) internal override {
+    require(to != address(0), "TRANSFER_TO_ZERO_ADDRESS");
+    super._beforeTokenTransfer(from, to, amount);
+}
+```
+
+**Exception**: The explicit `burn()` and `burnFrom()` functions (if provided) MAY
+transfer to address(0) as this is their documented purpose. The guard applies only
+to `transfer()`, `transferFrom()`, and `slash()` execution paths.
+
+The `slash()` function distributes slashed funds to:
+- 50% → `burn()` (explicit burn call)
+- 25% → whistleblower address (MUST NOT be address(0); enforced in `submitEvidence()`)
+- 25% → DAO treasury (MUST NOT be address(0); set at deploy time, governance-controlled)
+
+```solidity
+function submitEvidence(
+    string calldata accused,
+    bytes32 slashCondition,
+    bytes calldata proofBytes
+) external {
+    require(msg.sender != address(0), "Zero address submitter");
+    // whistleblower is msg.sender — already non-zero by require above
+    ...
+}
+```
+
+---
+
 ### Recovery Path if Broken Contract Is Set
 
 If a broken slashing contract address is set despite the above guards (e.g.,

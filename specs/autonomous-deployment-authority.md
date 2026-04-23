@@ -2048,6 +2048,763 @@ class ADAConfig:
 
 ---
 
+## GitHub Actions CI/CD Workflow Integration
+
+<!-- Addresses EDGE-200, EDGE-201, EDGE-204, EDGE-206, EDGE-210, EDGE-211,
+     EDGE-213, EDGE-214, EDGE-222, EDGE-226, EDGE-227, EDGE-228, EDGE-230,
+     EDGE-234, EDGE-238, EDGE-239, EDGE-242, EDGE-243, EDGE-244, EDGE-246,
+     EDGE-249, EDGE-251, EDGE-253, EDGE-260, EDGE-264, EDGE-265, EDGE-266,
+     EDGE-267, EDGE-268, EDGE-269, EDGE-270 -->
+
+This section specifies how the ADA service integrates with GitHub Actions workflows
+(`ada-deploy.yml`). All rules here supplement the core ADA protocol rules above; the
+core rules (authority levels, rollback, staking, signing) remain in effect unchanged.
+
+---
+
+### 1. Mandatory Workflow Step Ordering
+
+<!-- Addresses EDGE-226 -->
+
+The `ada-deploy.yml` workflow MUST execute steps in the following order.  No
+deployment step may run before ADA scoring completes. Violation of this order
+is a **Critical** security issue — a deployment without a prior ADA authorization
+check bypasses all 7 ADA conditions.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Mandatory Step Order for ada-deploy.yml                                  │
+├───┬──────────────────────────────────────────────────────────────────────┤
+│ 1 │ Checkout + environment validation (DEPLOY_ENV ↔ config environment)  │
+│ 2 │ Load ADA config (ADA_CONFIG_PATH, KMS HMAC key resolution)           │
+│ 3 │ Collect CI artifacts (test coverage, security scan, SBOM)            │
+│ 4 │ Call ADA scoring API → compute DeploymentScore + DeploymentAuthorityLevel │
+│ 5 │ Gate: check authority level; fail or proceed per §2 below            │
+│ 6 │ [FULL_AUTONOMOUS / AUTONOMOUS_WITH_MONITORING only] Execute deploy   │
+│ 7 │ Upload signed DeploymentProof artifact (per §4 below)                │
+│ 8 │ Record MAAT staking event (per §5 below)                             │
+│ 9 │ [Post-deploy] Monitor metrics for 15-minute window (per §6 below)    │
+│ 10│ [On metric breach] Execute auto-rollback + upload RollbackProof      │
+└───┴──────────────────────────────────────────────────────────────────────┘
+```
+
+**Step 4 must run before step 5, and step 5 must complete before step 6.**
+If steps run out of order, the workflow MUST fail with exit code 1 and log
+`ADA_WORKFLOW_STEP_ORDER_VIOLATION`.
+
+---
+
+### 2. Authority Level Gating — All Five Levels
+
+<!-- Addresses EDGE-238, EDGE-267 -->
+
+The workflow MUST handle all five `DeploymentAuthorityLevel` values explicitly.
+A workflow that only handles `FULL_AUTONOMOUS` and `BLOCKED` is incomplete and
+MUST NOT be merged. The required branching logic:
+
+```yaml
+# Required conditional logic in ada-deploy.yml
+- name: Gate on ADA authority level
+  run: |
+    case "$ADA_AUTHORITY_LEVEL" in
+      FULL_AUTONOMOUS)
+        # Proceed autonomously; no environment protection gate permitted (see §3)
+        echo "ADA_PROCEED=true" >> $GITHUB_ENV
+        echo "ADA_MONITORING_REQUIRED=false" >> $GITHUB_ENV
+        ;;
+      AUTONOMOUS_WITH_MONITORING)
+        # Proceed; mandatory 15-minute monitoring window active
+        echo "ADA_PROCEED=true" >> $GITHUB_ENV
+        echo "ADA_MONITORING_REQUIRED=true" >> $GITHUB_ENV
+        ;;
+      STAGING_AUTONOMOUS)
+        # Blocked for production; permitted for staging/dev targets
+        if [[ "$DEPLOY_ENV" == "prod" ]]; then
+          echo "::error::ADA authority STAGING_AUTONOMOUS is not permitted for production"
+          exit 1
+        fi
+        echo "ADA_PROCEED=true" >> $GITHUB_ENV
+        echo "ADA_MONITORING_REQUIRED=false" >> $GITHUB_ENV
+        ;;
+      DEV_AUTONOMOUS)
+        # Only dev / sandbox permitted
+        if [[ "$DEPLOY_ENV" != "dev" && "$DEPLOY_ENV" != "sandbox" ]]; then
+          echo "::error::ADA authority DEV_AUTONOMOUS is not permitted for $DEPLOY_ENV"
+          exit 1
+        fi
+        echo "ADA_PROCEED=true" >> $GITHUB_ENV
+        echo "ADA_MONITORING_REQUIRED=false" >> $GITHUB_ENV
+        ;;
+      BLOCKED)
+        # Raise AutonomousDeploymentBlockedError details; escalate to human path
+        echo "::error::AutonomousDeploymentBlockedError: $ADA_BLOCK_REASON"
+        echo "ADA_PROCEED=false" >> $GITHUB_ENV
+        exit 1
+        ;;
+      *)
+        echo "::error::Unknown ADA authority level: $ADA_AUTHORITY_LEVEL"
+        exit 1
+        ;;
+    esac
+```
+
+---
+
+### 3. GitHub Environment Protection Gate Prohibition for FULL_AUTONOMOUS
+
+<!-- Addresses EDGE-211 -->
+
+When the authority level is `FULL_AUTONOMOUS`, the workflow MUST NOT declare an
+`environment: production` block with `required_reviewers` configured. Such a
+block would introduce a mandatory human approval gate that contradicts the ADA
+protocol's autonomous deployment authority.
+
+**Rule**: If `ADA_AUTHORITY_LEVEL == FULL_AUTONOMOUS`, the deployment job MUST
+NOT use a GitHub environment with required reviewers. The `ada-deploy.yml`
+workflow owner is responsible for ensuring this.
+
+Exception: `AUTONOMOUS_WITH_MONITORING` and lower levels MAY use environment
+protection gates as an additional safety layer, but this is not required by the
+ADA protocol.
+
+CI lint check: A YAML linter step SHOULD parse `ada-deploy.yml` and fail if
+`environment: production` with `required_reviewers` appears in the same job as
+`FULL_AUTONOMOUS` gating logic.
+
+---
+
+### 4. Signed Proof Artifact Requirements
+
+<!-- Addresses EDGE-204, EDGE-213, EDGE-222, EDGE-230, EDGE-234, EDGE-242,
+     EDGE-260, EDGE-265, EDGE-270 -->
+
+#### 4.1 Artifact Naming Convention
+
+Workflow artifacts for proofs MUST use deterministic, collision-resistant names:
+
+| Artifact | Naming Pattern | Example |
+|----------|---------------|---------|
+| Deployment proof | `ada-deploy-proof-{trace_id}.json` | `ada-deploy-proof-a1b2c3....json` |
+| Rollback proof | `ada-rollback-proof-{rollback_id}.json` | `ada-rollback-proof-d4e5f6....json` |
+| ADA score | `ada-score-{score_id}.json` | `ada-score-9g8h7i....json` |
+
+The `trace_id` / `rollback_id` / `score_id` UUID components ensure no two runs
+produce the same artifact name, preventing silent overwrite.
+
+#### 4.2 Artifact Minimum Validity
+
+Before uploading, the workflow MUST validate:
+1. The proof file is non-empty (size > 0 bytes).
+2. The file parses as valid JSON.
+3. The `signature` field is non-empty.
+4. The `deploy_environment` field matches `DEPLOY_ENV`.
+
+If any check fails, the workflow MUST exit with code 1 and log
+`ADA_PROOF_ARTIFACT_INVALID [field=<failing_check>]`.
+
+#### 4.3 Upload Failure Handling
+
+Artifact upload step MUST use `continue-on-error: false` (the default).
+A silent upload failure MUST NOT be permitted. If `actions/upload-artifact`
+fails, the workflow MUST:
+1. Retry once after 30 seconds.
+2. If retry fails: log `ADA_ARTIFACT_UPLOAD_FAILED`, set deployment status to
+   `DEGRADED`, and alert the operator.
+3. The deployment is considered unverified until the proof is successfully
+   persisted.
+
+#### 4.4 Artifact Retention
+
+GitHub Actions artifact retention MUST be set to **≥ 90 days** for all ADA
+proof artifacts. This satisfies the SOX/SOC2 90-day audit retention requirement
+(`specs/autonomous-deployment-authority.md §DeploymentScore Storage`).
+
+```yaml
+- uses: actions/upload-artifact@v4
+  with:
+    name: ada-deploy-proof-${{ env.ADA_TRACE_ID }}
+    path: ada-deploy-proof-${{ env.ADA_TRACE_ID }}.json
+    retention-days: 90    # SOX/SOC2 minimum; increase for HIPAA (365 days)
+```
+
+For HIPAA-regulated environments, retention MUST be 365 days.
+
+#### 4.5 Proof Artifact Size Limit
+
+A signed proof artifact MUST NOT exceed **10 MB** before upload. The proof-chain
+spec limits chains to 500 steps; a 500-step chain with full metadata should not
+exceed 2 MB in practice. If a proof exceeds 10 MB:
+- Log `ADA_PROOF_ARTIFACT_OVERSIZED`.
+- Upload a truncated summary artifact instead.
+- Flag the oversized proof for audit review.
+
+#### 4.6 Public Repository Artifact Visibility
+
+In public repositories, GitHub Actions artifacts are **publicly downloadable**.
+Deployment proof artifacts contain:
+- `agent_id` (DID)
+- `deploy_environment`
+- Rollback thresholds
+
+These fields are NOT secret but operators should be aware of this exposure.
+`staked_amount` (wei) values are public on-chain and may appear in artifacts.
+HMAC signatures are safe to expose publicly (HMAC-SHA256 is a keyed MAC; the
+key never appears in the artifact).
+
+**Prohibited in proof artifacts**: HMAC keys, wallet private keys, KMS secrets,
+or any plaintext credential. If a workflow step accidentally logs sensitive values,
+use `::add-mask::$VALUE` in GitHub Actions to redact them.
+
+---
+
+### 5. MAAT Staking Event Recording
+
+<!-- Addresses EDGE-206, EDGE-227 -->
+
+#### 5.1 Structured Output Format
+
+MAAT staking events MUST be recorded as a **structured JSON step output**, not
+as plain text in workflow logs. The required GitHub Actions step output format:
+
+```yaml
+- name: Record MAAT Staking Event
+  id: maat_stake
+  run: |
+    python - <<'EOF'
+    import json, os
+    stake_event = {
+        "event":            "MAAT_STAKE_RECORDED",
+        "agent_id":         os.environ["ADA_AGENT_ID"],
+        "wallet_address":   os.environ["ADA_WALLET_ADDRESS"],
+        "staked_amount_wei": int(os.environ["ADA_STAKED_AMOUNT_WEI"]),  # int, not float
+        "environment":      os.environ["DEPLOY_ENV"],
+        "trace_id":         os.environ["ADA_TRACE_ID"],
+        "timestamp_utc":    __import__('datetime').datetime.utcnow().isoformat() + "Z",
+    }
+    # Write to GitHub Actions step summary (always visible in workflow UI)
+    with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+        f.write(f"\n## MAAT Staking Event\n```json\n{json.dumps(stake_event, indent=2)}\n```\n")
+    # Write to step output for downstream steps
+    print(f"stake_event={json.dumps(stake_event)}")
+    EOF
+```
+
+**Rules**:
+- `staked_amount_wei` MUST be an integer (wei), not a float. See §5 MaatStake.
+- The staking event MUST also be written to the GitHub Actions Job Summary
+  (`$GITHUB_STEP_SUMMARY`) for human auditability.
+- The staking event does NOT constitute an on-chain transaction — it is an
+  observation of the on-chain stake state. The actual stake lock is managed
+  by `MaatToken.sol`.
+
+#### 5.2 On-Chain Transaction Failure Handling
+
+If the on-chain staking transaction fails (insufficient gas, nonce conflict,
+network timeout):
+1. The workflow logs `MAAT_STAKE_TX_FAILED [reason=<gas|nonce|timeout>]`.
+2. The deployment is **blocked** — proceeding without confirmed stake is a
+   policy violation (CONSTITUTION §5, agent authority requires active stake).
+3. The workflow retries the transaction once with a gas price 10% above the
+   original estimate.
+4. If retry fails, `AutonomousDeploymentBlockedError` is raised with
+   `reason="stake_transaction_failed"`.
+
+---
+
+### 6. Monitoring Window vs. GitHub Actions Runner Timeout
+
+<!-- Addresses EDGE-200, EDGE-210, EDGE-249 -->
+
+#### 6.1 Job Timeout Configuration
+
+The post-deploy monitoring step requires a **15-minute observation window** with
+10-second polling intervals. GitHub Actions job timeout defaults to 6 hours, but
+operators may set shorter timeouts. The monitoring step MUST declare its own
+`timeout-minutes` to avoid being killed unexpectedly:
+
+```yaml
+- name: ADA Post-Deploy Monitoring (15-minute window)
+  timeout-minutes: 20    # 15-min window + 5-min buffer for rollback action
+  run: |
+    python scripts/ada_monitor.py --window-seconds 900 --poll-interval 10
+```
+
+If the monitoring step is killed by a runner timeout (exit code 143 / SIGTERM):
+1. The step is treated as "monitoring infrastructure down" per §Missing Metrics
+   Handling (EDGE-052): auto-rollback is triggered as a precaution.
+2. The rollback proof is written synchronously in the SIGTERM handler (≤ 5s
+   budget) before the process exits.
+3. The `RollbackProof.rollback_status` is set to `INITIATED` even if the
+   infrastructure rollback action could not complete.
+
+#### 6.2 Runner Timeout During Rollback Execution
+
+If the runner is killed while the rollback infrastructure action is in progress
+(between `INITIATED` and `COMPLETED`):
+1. The on-chain `rollback_action_id` (emitted at `INITIATED`) makes the partial
+   rollback detectable.
+2. A new workflow run MUST be triggered automatically (via `workflow_run` event
+   or a GitHub Actions failure notification) to resume / confirm the rollback.
+3. The deployment remains in `DEGRADED` state until a human operator confirms
+   the rollback result and updates the on-chain record.
+
+---
+
+### 7. Concurrent Workflow Run Controls
+
+<!-- Addresses EDGE-201 -->
+
+Concurrent workflow runs for the same environment MUST be prevented to avoid
+race conditions in deployment and rollback. The `ada-deploy.yml` workflow MUST
+declare a `concurrency` group:
+
+```yaml
+concurrency:
+  group: ada-deploy-${{ github.ref }}-${{ vars.DEPLOY_ENV }}
+  cancel-in-progress: false    # Do NOT cancel in-progress deployments
+```
+
+**`cancel-in-progress: false`** is critical — cancelling an in-progress
+deployment mid-run could leave the system in a partially deployed state.
+Instead, the newer run SHOULD queue behind the in-progress run.
+
+For the Python layer, the AVM advisory lock (§5 MaatStake, EDGE-063) provides
+a secondary concurrency guard at the staking level.
+
+---
+
+### 8. Score Freshness / TTL
+
+<!-- Addresses EDGE-243 -->
+
+A `DeploymentScore` computed at the start of the CI run may be stale by the
+time the deployment step executes (e.g., a long-running test suite or queue
+delay). The following staleness rules apply:
+
+| Time since score computed | Behaviour |
+|--------------------------|-----------|
+| < 5 minutes | Score is fresh; proceed |
+| 5–30 minutes | Score is acceptable; log `ADA_SCORE_STALENESS_WARNING` |
+| 30–60 minutes | Score requires re-computation before deployment proceeds |
+| > 60 minutes | Score is expired; deployment is blocked pending re-score |
+
+The `DeploymentScore` record includes a `computed_at` timestamp. The workflow
+step that calls the deployment gate MUST check staleness:
+
+```python
+import time
+from decimal import Decimal
+
+SCORE_FRESH_SECS      = 5 * 60      # 5 minutes
+SCORE_ACCEPTABLE_SECS = 30 * 60     # 30 minutes
+SCORE_EXPIRY_SECS     = 60 * 60     # 60 minutes
+
+def check_score_freshness(score: DeploymentScore, computed_at: float) -> None:
+    age = time.time() - computed_at
+    if age > SCORE_EXPIRY_SECS:
+        raise AutonomousDeploymentBlockedError(
+            reason="deployment_score_expired",
+            authority_level=None,
+            deployment_score=score.to_dict(),
+        )
+    if age > SCORE_ACCEPTABLE_SECS:
+        # Trigger re-computation
+        raise ADAScoreStaleError(f"Score is {age/60:.1f} minutes old; re-computation required")
+    if age > SCORE_FRESH_SECS:
+        log_warning("ADA_SCORE_STALENESS_WARNING", age_minutes=age/60)
+```
+
+---
+
+### 9. Score Computation Timeout
+
+<!-- Addresses EDGE-228 -->
+
+DRE committee convergence may be slow (non-convergence, slow LLM providers).
+The ADA scoring API call MUST be bounded by a timeout:
+
+| Environment | Score computation timeout |
+|-------------|--------------------------|
+| `dev` | 5 minutes |
+| `uat` | 8 minutes |
+| `prod` | 10 minutes (matches multi-agent wall-clock limit per §multi-agent-coordination-spec.md) |
+
+If the scoring API does not respond within the timeout:
+1. Log `ADA_SCORE_TIMEOUT [env=<env>, timeout_secs=<n>]`.
+2. Apply `fail_closed_on_score_error` policy:
+   - If `true` (default for prod): raise `AutonomousDeploymentBlockedError`.
+   - If `false` (dev only): proceed at `DEV_AUTONOMOUS` with audit warning.
+3. Workflow exits with code 1 for prod timeouts.
+
+---
+
+### 10. Missing `policy_ref` Configuration
+
+<!-- Addresses EDGE-244 -->
+
+If the workflow runs without a valid `DEPLOY_POLICY_REF` environment variable
+(the `DeployPolicy` contract address):
+
+1. The ADA scoring API MUST return an error: `POLICY_REF_MISSING`.
+2. The workflow MUST exit with code 1 and log:
+   `ADA_WORKFLOW_CONFIG_ERROR: DEPLOY_POLICY_REF is not set or is not a valid contract address`
+3. Deployment is blocked — an ADA scoring without a policy reference cannot
+   evaluate Condition 1 (hard policy gates).
+
+`DEPLOY_POLICY_REF` MUST be stored as a GitHub Actions variable (`vars.DEPLOY_POLICY_REF`)
+or secret (`secrets.DEPLOY_POLICY_REF`), not hardcoded in the workflow YAML.
+
+---
+
+### 11. Required GitHub Actions Secrets and Permissions
+
+<!-- Addresses EDGE-246, EDGE-251, EDGE-269 -->
+
+#### 11.1 Required Permissions
+
+```yaml
+permissions:
+  id-token: write      # REQUIRED: OIDC token for KMS authentication (Azure/AWS/GCP)
+  contents: read       # Read source code
+  actions: read        # Read workflow run artifacts for CI result extraction
+```
+
+The `id-token: write` permission enables OIDC-based workload identity, which is
+the required authentication mechanism for KMS HMAC key retrieval (per §5 HMAC
+Key References). Static credentials MUST NOT be used.
+
+#### 11.2 Required Secrets
+
+| Secret | Purpose | Source |
+|--------|---------|--------|
+| `ADA_CONFIG_PATH` | Path or Azure App Config ref to ADA config | GitHub Actions variable |
+| `DEPLOY_POLICY_REF` | `DeployPolicy` contract address | GitHub Actions variable |
+| `ADA_AGENT_DID` | Agent DID for signing requests | GitHub Actions secret |
+| `AVM_API_ENDPOINT` | ADA scoring API endpoint | GitHub Actions variable |
+
+**Prohibited**: Using `GITHUB_TOKEN` as the HMAC key for proof signing.
+`GITHUB_TOKEN` is a short-lived token for GitHub API authentication — it is NOT
+a symmetric HMAC secret and MUST NOT be passed as `secret_key` to `RollbackProof.sign()`.
+Doing so would cause proof verification failures and may expose token values in audit logs.
+
+#### 11.3 Preventing Accidental Secret Logging
+
+Any step that loads the HMAC key (even ephemerally) MUST immediately mask it:
+
+```yaml
+- name: Load and mask HMAC key
+  run: |
+    HMAC_KEY=$(python scripts/load_kms_key.py "$ADA_HMAC_KEY_REF")
+    echo "::add-mask::$HMAC_KEY"
+    echo "ADA_HMAC_KEY=$HMAC_KEY" >> $GITHUB_ENV
+```
+
+Failure to mask the HMAC key results in it appearing in workflow logs, which
+are retained for 90 days by default and may be accessible to repository readers.
+
+---
+
+### 12. Fork PR Security Model
+
+<!-- Addresses EDGE-214 -->
+
+Pull requests from repository forks do NOT have access to GitHub Actions secrets
+(`secrets.*`), preventing the ADA workflow from loading KMS credentials.
+
+**Required behavior**:
+1. `ada-deploy.yml` MUST check if the workflow is triggered from a fork:
+   ```yaml
+   - name: Reject fork PRs for deployment workflow
+     if: github.event.pull_request.head.repo.fork == true
+     run: |
+       echo "::error::ADA deployment workflow cannot run on fork PRs (no secrets access)"
+       exit 1
+   ```
+2. Deployment to any environment MUST NOT proceed from a fork PR.
+3. Fork PRs MAY trigger build and test steps only; the ADA scoring and deployment
+   steps MUST be skipped or fail-safe.
+
+---
+
+### 13. Auto-Rollback Commit Loop Prevention
+
+<!-- Addresses EDGE-253 -->
+
+When the ADA auto-rollback mechanism reverts an artifact (e.g., re-deploys the
+last-known-good image), this action MUST NOT trigger a new `ada-deploy.yml` run.
+Without this guard, a rollback could trigger another deployment which could trigger
+another rollback, creating an infinite loop.
+
+**Required guards**:
+1. The rollback action MUST NOT push a new commit to the repository (it should
+   re-deploy an existing artifact, not create a new git commit).
+2. If a rollback requires a configuration file change (rare), the commit message
+   MUST include `[skip ci]` or `[no deploy]` to prevent re-triggering.
+3. The `ada-deploy.yml` trigger MUST use `paths-ignore` or `branches` filters
+   to exclude automatic rollback commits:
+
+```yaml
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/workflows/ada-rollback-marker'  # Written by rollback script
+  workflow_dispatch:
+    inputs:
+      force_deploy: {type: boolean, default: false}
+```
+
+4. A `deployment_loop_guard` check MUST verify that the current `commit_sha`
+   was not itself produced by a rollback action (checked via a `ROLLBACK_TRIGGERED`
+   marker in the git trailer or artifact metadata).
+
+---
+
+### 14. Runner Network Access Requirements
+
+<!-- Addresses EDGE-264 -->
+
+The `ada-deploy.yml` workflow runner MUST have network access to:
+
+| Endpoint | Protocol | Purpose |
+|----------|---------|---------|
+| ADA scoring API (`AVM_API_ENDPOINT`) | HTTPS | Score computation |
+| KMS endpoint (Azure KV / AWS / GCP) | HTTPS | HMAC key retrieval |
+| `MaatToken.sol` RPC endpoint | HTTPS/WSS | Stake verification |
+| IPFS gateway | HTTPS | CID resolution for RollbackProof |
+| Metrics endpoint (`RuntimeGuard.metrics_source`) | HTTPS | Post-deploy monitoring |
+
+**Self-hosted runner requirement**: If a self-hosted runner is used, the operator
+MUST verify connectivity to all five endpoint types before registering the runner.
+A pre-flight check step SHOULD be included in the workflow:
+
+```yaml
+- name: ADA network pre-flight check
+  run: |
+    python scripts/ada_preflight.py \
+      --avm-endpoint "$AVM_API_ENDPOINT" \
+      --kms-endpoint "$ADA_KMS_ENDPOINT" \
+      --rpc-endpoint "$MAAT_RPC_ENDPOINT"
+```
+
+GitHub-hosted runners have unrestricted outbound internet access and satisfy
+these requirements by default (firewall rules permitting).
+
+---
+
+### 15. Malformed ADA API Response Handling
+
+<!-- Addresses EDGE-268 -->
+
+The ADA scoring API may return malformed JSON (server crash, OOM, partial response).
+The workflow MUST handle this defensively:
+
+```python
+import json, sys
+
+def parse_ada_response(raw: str) -> dict:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        # Log full raw response for debugging (truncated to 1000 chars)
+        print(f"ADA_RESPONSE_PARSE_ERROR: {exc}")
+        print(f"Raw response (first 1000 chars): {raw[:1000]}")
+        raise AutonomousDeploymentBlockedError(
+            reason="ada_api_malformed_response",
+            authority_level=None,
+        ) from exc
+
+    required_fields = {"authority_level", "deployment_score", "trace_id"}
+    missing = required_fields - data.keys()
+    if missing:
+        raise AutonomousDeploymentBlockedError(
+            reason=f"ada_api_response_missing_fields: {missing}",
+        )
+    return data
+```
+
+A malformed response is treated as `AutonomousDeploymentBlockedError` — fail
+closed per `fail_closed_on_score_error` policy.
+
+---
+
+### 16. Workflow Cancellation During Rollback
+
+<!-- Addresses EDGE-266 -->
+
+If a user manually cancels a GitHub Actions workflow run while a rollback is in
+progress (`RollbackProof.rollback_status == INITIATED`):
+
+1. The rollback Python process receives `SIGTERM`. It MUST catch this signal and:
+   - Flush the current `RollbackProof` to disk (with `rollback_status = INITIATED`).
+   - Attempt to complete the proof upload to IPFS and on-chain record update
+     within a 10-second cleanup budget.
+   - If time expires: log `ADA_ROLLBACK_INTERRUPTED`, leave `rollback_status = INITIATED`.
+
+2. The deployment remains in `DEGRADED` state (per the Rollback Status State Machine).
+
+3. A follow-up `workflow_run` event MUST be configured to detect interrupted rollbacks
+   and alert the operator:
+
+```yaml
+on:
+  workflow_run:
+    workflows: ["ADA Deploy"]
+    types: [cancelled]
+```
+
+4. Human operator intervention is required to confirm or complete the rollback.
+
+---
+
+### 17. `AutonomousDeploymentBlockedError` Workflow Handling
+
+<!-- Addresses EDGE-235 -->
+
+When `AutonomousDeploymentBlockedError` is raised, the workflow MUST:
+
+1. **Surface the full error details** in the GitHub Actions log:
+   ```
+   ::error title=AutonomousDeploymentBlockedError::{reason} | authority_level={level} | score={total} | trace_id={id}
+   ```
+2. **Write a GitHub Step Summary** with the blocked deployment details for
+   human review:
+   ```markdown
+   ## ❌ Autonomous Deployment Blocked
+   **Reason**: {reason}
+   **Authority Level**: {authority_level}
+   **Deployment Score**: {score_total}
+   **Trace ID**: {trace_id}
+   **Next Step**: Review the deployment score breakdown and address the blocking condition.
+   ```
+3. **Trigger the human-approval fallback path** if configured:
+   - If `require_human_approval` is in the `DeployPolicy` contract, invoke the
+     `HumanApprovalAgent` workflow (per `.github/agents/human-approval-agent.md`).
+   - Otherwise, leave the deployment blocked until the blocking condition is resolved.
+4. **NOT exit 0** — the workflow MUST exit with code 1 to signal CI failure.
+
+---
+
+### 18. Workflow Security Controls
+
+<!-- Addresses EDGE-202, EDGE-239, EDGE-247 -->
+
+#### 18.1 Workflow YAML Modification Protection
+
+The `ada-deploy.yml` workflow file MUST be protected against unauthorized modification:
+
+1. Enable **CODEOWNERS** for `.github/workflows/ada-deploy.yml` requiring review
+   from `@security-team` or equivalent.
+2. Enable branch protection on `main` requiring `CODEOWNERS` approval for workflow
+   files.
+3. The workflow MUST validate that the `ADA_AUTHORITY_LEVEL` value it acts on is
+   sourced from the ADA API response, not from an environment variable:
+   ```yaml
+   # PROHIBITED: setting authority level via env vars
+   # env:
+   #   ADA_AUTHORITY_LEVEL: FULL_AUTONOMOUS   ← NEVER do this
+   ```
+
+#### 18.2 GitHub Actions Expression Injection Prevention
+
+The workflow MUST NOT use untrusted data (PR titles, commit messages, branch names)
+directly in `run:` expressions. GitHub Actions expression injection can allow
+arbitrary command execution via crafted PR titles.
+
+```yaml
+# UNSAFE — DO NOT USE:
+- name: Log PR title
+  run: echo "${{ github.event.pull_request.title }}"
+
+# SAFE — use env var intermediary:
+- name: Log PR title
+  env:
+    PR_TITLE: ${{ github.event.pull_request.title }}
+  run: echo "$PR_TITLE"
+```
+
+This complements the prompt injection defenses in `docs/06-security-model.md` §Prompt
+Injection Defenses, extending protection to the GitHub Actions layer.
+
+#### 18.3 Non-Bypassable Gate Enforcement in Workflow
+
+CONSTITUTION §2 designates certain gates as non-bypassable. The workflow
+enforces this by:
+1. Calling the ADA scoring API which validates all 7 conditions.
+2. Never short-circuiting the scoring step, even with `continue-on-error: true`.
+3. The AVM service (not the workflow YAML) is the authoritative enforcement point;
+   workflow YAML is a transport layer, not a security boundary.
+
+---
+
+### 19. Runner Ephemeral Storage
+
+<!-- Addresses EDGE-230 -->
+
+GitHub Actions runners have limited ephemeral disk storage (typically 14 GB for
+GitHub-hosted runners). Proof artifacts are generated on disk before upload.
+
+**Requirements**:
+1. Proof artifacts MUST be written to `$RUNNER_TEMP` (not `$GITHUB_WORKSPACE`)
+   to minimize workspace pollution.
+2. Proof artifacts MUST be deleted from disk after successful upload:
+   ```yaml
+   - name: Cleanup proof artifacts
+     if: always()
+     run: rm -f "$RUNNER_TEMP"/ada-*-proof-*.json
+   ```
+3. If disk write fails (ENOSPC): log `ADA_DISK_FULL`, attempt to write to a
+   reduced-size summary artifact, and alert the operator. The deployment is
+   considered unverified.
+
+---
+
+### Workflow Integration Flow Diagram
+
+```mermaid
+flowchart TD
+    TRIGGER["Workflow Triggered\n(push to main / workflow_dispatch)"]
+    FORK_CHECK{"Fork PR?"}
+    FORK_FAIL["Exit 1:\nNo secrets access\non fork PRs"]
+    PREFLIGHT["Network pre-flight check\n(ADA API, KMS, RPC, IPFS)"]
+    LOAD_CONFIG["Load ADA config\n(KMS HMAC key via OIDC)"]
+    COLLECT["Collect CI artifacts\n(test coverage, CVEs, SBOM)"]
+    SCORE["Call ADA scoring API\n→ DeploymentScore + authority level"]
+    STALE{"Score age\n> 60 min?"}
+    STALE_FAIL["Raise\nADAScoreStaleError\nExit 1"]
+    GATE{"DeploymentAuthorityLevel?"}
+    BLOCKED["Exit 1:\nAutonomousDeploymentBlockedError\n+ human-approval fallback"]
+    DEPLOY["Execute deployment\n(FULL_AUTONOMOUS or\nAUTONOMOUS_WITH_MONITORING)"]
+    UPLOAD_PROOF["Upload signed DeploymentProof\nartifact (90-day retention)"]
+    RECORD_STAKE["Record MAAT staking event\n(JSON to step summary)"]
+    MONITOR{"ADA_MONITORING_REQUIRED?"}
+    MONITOR_WINDOW["Monitor metrics\n15-minute window\n10s polling interval"]
+    BREACH{"Metric breach\nor missing ≥30s?"}
+    STABLE["Deployment stable\nFinalize on-chain record"]
+    ROLLBACK["Execute auto-rollback\n(≤60s to INITIATED)"]
+    UPLOAD_ROLLBACK["Upload signed RollbackProof\n(90-day retention)"]
+    CANCEL_GUARD["SIGTERM handler:\nflush proof, alert operator"]
+
+    TRIGGER --> FORK_CHECK
+    FORK_CHECK -- Fork PR --> FORK_FAIL
+    FORK_CHECK -- Not fork --> PREFLIGHT --> LOAD_CONFIG
+    LOAD_CONFIG --> COLLECT --> SCORE --> STALE
+    STALE -- Yes --> STALE_FAIL
+    STALE -- No --> GATE
+    GATE -- BLOCKED --> BLOCKED
+    GATE -- STAGING_AUTONOMOUS\nin prod --> BLOCKED
+    GATE -- DEV_AUTONOMOUS\nnot in dev --> BLOCKED
+    GATE -- FULL_AUTONOMOUS\nor AUTONOMOUS_WITH_MONITORING --> DEPLOY
+    DEPLOY --> UPLOAD_PROOF --> RECORD_STAKE --> MONITOR
+    MONITOR -- No --> STABLE
+    MONITOR -- Yes --> MONITOR_WINDOW --> BREACH
+    BREACH -- No (window closed) --> STABLE
+    BREACH -- Yes / missing --> ROLLBACK --> UPLOAD_ROLLBACK
+    ROLLBACK -.->|SIGTERM received| CANCEL_GUARD
+```
+
+---
+
 ## Known Gaps / Future Work
 
 The following scenarios are identified as requiring additional specification work
@@ -2068,4 +2825,10 @@ The following scenarios are identified as requiring additional specification wor
 - **EDGE-186 (round leader delay)**: Round leader timeout and rotation — tracked in GitHub Issue #66
 - **EDGE-189 (reentrancy)**: Reentrancy guard on Slashing.sol `_executeSlash` — tracked in GitHub Issue #68
 - **EDGE-191 (governance calldata)**: Governance.sol calldata whitelist — tracked in GitHub Issue #75
+- **EDGE-221 (concurrent rollback idempotency)**: Two monitoring jobs triggering rollback simultaneously for the same deployment_id — tracked as new GitHub Issue (filed by Spec Edge Case Tester)
+- **EDGE-240 (last_known_good artifact validation)**: Spec does not define validation rules for the last_known_good artifact reference before rollback — tracked as new GitHub Issue
+- **EDGE-254 (IPFS CID vs artifact CID mismatch)**: Resolution protocol when workflow artifact CID differs from on-chain CID — tracked as new GitHub Issue
+- **EDGE-257 (workflow timing attack)**: Mitigations for timing-based inference of ADA score thresholds via workflow run duration — tracked as new GitHub Issue
+- **EDGE-272 (gas price management for staking transactions)**: Behaviour when staking transaction stays pending indefinitely due to underpriced gas — tracked as new GitHub Issue
+- **EDGE-275 (TOCTOU DAO vote rescission)**: Authority level computed as FULL_AUTONOMOUS but DAO vote rescinded before deployment step executes — tracked as new GitHub Issue
 - **EDGE-194 (lost wallet)**: Agent wallet recovery path — tracked in GitHub Issue #70
