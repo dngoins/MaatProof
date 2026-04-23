@@ -225,7 +225,7 @@ graph LR
 | Annual developer hours reclaimed | — | 3,104 hrs/yr | **$186,240/yr** |
 | Compliance audit prep (SOC2 + HIPAA + SOX) | $9,840/yr | $155/yr | **$9,685/yr** |
 | Deployment frequency | 1×/week | 10×/day | **70× faster** |
-| Lead time for changes | 5 days | 2 hours | **98% faster** |
+| Lead time for changes | 5 days | 2 hours | **97% faster** |
 | Change failure rate | 15% | 3% | **80% reduction** |
 | Mean time to recovery | 4 hours | 15 min | **94% faster** |
 | HMAC key rotation downtime | 4 hours | 0 (automated) | **100% reduction** |

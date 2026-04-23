@@ -205,6 +205,12 @@ The Audit Logging subsystem (AuditEntry, HMAC chain, SQLite WAL, query API) runs
 |--------|-------|
 | Monthly active users | 100 |
 | Proof verifications/day | 1,000 |
+| DRE consensus rounds/day | 1,000 (one per verification) |
+| Model responses per round | N=3 (3-of-5 default committee) |
+| `CanonicalPrompt` SHA-256 hashes/day | 1,000 |
+| `ModelResponse` objects created/day | 3,000 (N × rounds) |
+| `ConsensusResult` writes/day | 1,000 |
+| `DeterministicProof` writes/day | 1,000 |
 | Pipeline runs/day | 50 |
 | AuditEntry writes/day | ~5,000 (50 pipelines × 100 steps avg) |
 | Chain verification runs/day | 10 (scheduled + on-demand) |
@@ -238,6 +244,11 @@ The Audit Logging subsystem (AuditEntry, HMAC chain, SQLite WAL, query API) runs
 |--------|-------|
 | Monthly active users | 10,000 |
 | Proof verifications/day | 1,000,000 |
+| DRE consensus rounds/day | 1,000,000 |
+| Model responses per round | N=5 (5-of-7 high-security committee) |
+| `CanonicalPrompt` SHA-256 hashes/day | 1,000,000 |
+| `ModelResponse` objects created/day | 5,000,000 |
+| `ConsensusResult` writes/day | 1,000,000 |
 | Pipeline runs/day | 5,000 |
 | AuditEntry writes/day | ~500,000 (5,000 pipelines × 100 steps avg) |
 | Chain verification runs/day | 1,000 (continuous background verification) |
