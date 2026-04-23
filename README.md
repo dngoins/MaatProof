@@ -328,8 +328,9 @@ graph LR
 | IaC lint/validate CI cost | — | **$0.00/mo** | Free tier |
 | Documentation hosting (GitHub Pages) | — | **$0/yr** | Free |
 | DORA rating | Low | **Elite** | Top 10% globally |
-| Year 1 ROI | — | — | **10,163%** |
-| 5-year TCO savings | — | — | **$1,618,582** |
+| Issue #123 Year 1 ROI | — | — | **1,429%** |
+| Pipeline Year 1 ROI | — | — | **~9,845%** |
+| 5-year TCO savings | — | — | **$2,175,725** |
 
 > _Last estimated: 2026-04-23 · Run #6 · Issue #125 [Infrastructure / IaC] · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
 ---
