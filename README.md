@@ -4,7 +4,7 @@ MaatProof is a Layer 1 blockchain for **Agentic CI/CD (ACI/ACD)**. It replaces t
 
 Every deployment decision produces a `ReasoningProof` — a hash-chained, HMAC-signed artifact that answers *"Why did this deploy at 2 am?"* with a cryptographically verifiable answer, not a stale log entry.
 
-The protocol stack is built in **Rust** (consensus engine, AVM, DRE, VRP, ADA), **Node.js** (orchestrator, GitHub integrations, SDK), and **Solidity** (deployment contracts, tokenomics, governance).
+The executable reference prototype is now implemented in **Python** for local replay and Google Colab experimentation. Future production hardening still targets **Rust/WASM** for AVM, VRP, DRE, and consensus components, with **Solidity** for deployment contracts, tokenomics, and governance.
 
 ## What MaatProof Does
 
@@ -34,9 +34,32 @@ The protocol stack is built in **Rust** (consensus engine, AVM, DRE, VRP, ADA), 
 
 ## Status
 
-🚧 **Spec Phase** — Architecture defined, agent pipeline operational, core implementation in progress.
+🚧 **Reference Prototype** — Python certificate checker, signed evidence bundles, VRP derivations, validator quorum, and JSONL ledger are available for local experimentation.
 
 📄 **[Read the full MaatProof Whitepaper →](https://www.overleaf.com/read/hvsvqyvzfmhf#89e3b9)**
+
+## Try it in Google Colab
+
+Run the end-to-end Proof-of-Deploy example in [`examples/proof_of_deploy_colab.ipynb`](examples/proof_of_deploy_colab.ipynb). The notebook builds a certificate `C = <P, E, pi, A>`, checks `WF(P)`, `Auth(E)`, `CheckR(pi, P, E)`, and `Quorum(A)`, appends an accepted certificate to a local JSONL ledger, then demonstrates structured failures for missing scan evidence, stale human attestation, wrong environment binding, invalid derivation, and insufficient quorum.
+
+Local setup:
+
+```bash
+pip install -e .
+python -m pytest tests -v
+```
+
+Python module mapping:
+
+| Formal object | Python module |
+|---|---|
+| `P` deployment policy and `WF(P)` | `maatproof.policy` |
+| `E` evidence bundle and `Auth(E)` | `maatproof.evidence` |
+| `pi` derivation and `CheckR(pi, P, E)` | `maatproof.vrp` |
+| `A` validator attestations and `Quorum(A)` | `maatproof.pod` |
+| `C = <P,E,pi,A>` and `Accept(C)` | `maatproof.certificate` |
+| Finalized certificate log | `maatproof.ledger` |
+| AVM boundary trace-to-evidence binding | `maatproof.avm` |
 
 ---
 
