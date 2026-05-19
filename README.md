@@ -1,565 +1,276 @@
-# MaatProof — Proof of Deploy
+# MaatProof - Proof-of-Deploy
 
-MaatProof is a Layer 1 blockchain for **Agentic CI/CD (ACI/ACD)**. It replaces traditional pipelines with **cryptographically verifiable deployment decisions made by AI agents**, enforced through signed reasoning proofs, deterministic trust anchors, and on-chain deployment policies.
+MaatProof is a research prototype for **proof-carrying deployment**: every deployment decision is packaged with a machine-checkable certificate that explains what was deployed, which evidence supports it, which policy it satisfies, and which validators attested to it.
 
-Every deployment decision produces a `ReasoningProof` — a hash-chained, HMAC-signed artifact that answers *"Why did this deploy at 2 am?"* with a cryptographically verifiable answer, not a stale log entry.
+In plain terms: this repo asks, "Can an AI-assisted CI/CD system produce a deployment decision that an independent verifier can replay and trust?" The Python code demonstrates a minimal but working answer.
 
-The executable reference prototype is now implemented in **Python** for local replay and Google Colab experimentation. Future production hardening still targets **Rust/WASM** for AVM, VRP, DRE, and consensus components, with **Solidity** for deployment contracts, tokenomics, and governance.
+## Research thesis
 
-## What MaatProof Does
+Modern CI/CD logs tell you what happened. MaatProof aims to prove why a deployment was allowed.
 
-| Capability | How it works |
+The core object is a deployment certificate:
+
+```text
+C = <P, E, pi, A>
+```
+
+Where:
+
+| Symbol | Meaning | Python implementation |
+|---|---|---|
+| `P` | Deployment policy | `maatproof.policy.DeploymentPolicy` |
+| `E` | Signed evidence bundle | `maatproof.evidence.EvidenceBundle` |
+| `pi` | Machine-checkable proof derivation | `maatproof.vrp.ProofDerivation` |
+| `A` | Validator attestations | `maatproof.pod.ValidatorAttestation` |
+
+The acceptance rule is explicit and replayable:
+
+```text
+Accept(C) = WF(P) && Auth(E) && CheckR(pi, P, E) && Quorum(A)
+```
+
+This is the PhD-rigor layer of the project: validity is separated into formal obligations, each obligation has a deterministic checker, and rejection returns structured reasons instead of an opaque failure.
+
+## What this repo showcases
+
+This repository combines a formal protocol sketch with executable Python code:
+
+| Showcase | What to inspect |
 |---|---|
-| **Proof-of-Deploy consensus** | Two-layer consensus: DRE model committee (L1) + stake-weighted validator committee (L2) attest every deployment |
-| **Deterministic Reasoning Engine (DRE)** | N-of-M LLM instances execute a canonical `PromptBundle` in parallel; convergence on a `DecisionTuple` emits a `CommitteeCertificate` — determinism is a system property, not a per-call guarantee |
-| **Verifiable Reasoning Protocol (VRP)** | Typed reasoning records committed as a Merkleized DAG; only *admissible* (machine-checkable) reasoning may authorize a production deploy |
-| **Autonomous Deployment Authority (ADA)** | 7-condition authorization replaces mandatory human approval as the protocol default; human approval is a configurable policy gate for regulated workloads |
-| **Agent Virtual Machine (AVM)** | Executes reasoning traces deterministically in a WASM sandbox and validates against on-chain policy |
-| **Cryptographic audit trail** | Every agent decision is hash-chained and HMAC-SHA256 signed — tamper-evident by design |
-| **Self-healing pipelines** | Agents fix failing tests, retry, and redeploy with bounded retries; runtime guard + rollback proofs provide automatic production safety |
+| **Proof-carrying deployment certificate** | `maatproof.certificate` |
+| **Policy well-formedness (`WF(P)`)** | `maatproof.policy` |
+| **Signed, canonical evidence (`Auth(E)`)** | `maatproof.evidence`, `maatproof.canonical` |
+| **Verifiable reasoning derivation (`CheckR`)** | `maatproof.vrp` |
+| **Validator quorum and finality (`Quorum(A)`)** | `maatproof.pod` |
+| **Append-only local deployment ledger** | `maatproof.ledger` |
+| **AVM boundary trace-to-evidence conversion** | `maatproof.avm` |
+| **Hash-chained reasoning proofs** | `maatproof.proof`, `maatproof.chain` |
+| **Agentic CI/CD orchestration prototype** | `maatproof.pipeline`, `maatproof.orchestrator`, `maatproof.layers` |
+| **Executable demonstration** | `examples/proof_of_deploy_colab.ipynb` |
 
-## Key Components
+The implementation intentionally uses HMAC-SHA256 and the Python standard library so the reference model is easy to run in tests and Colab. Production hardening can replace the signature backend with Ed25519 or post-quantum schemes without changing the certificate validity equation.
 
-| Component | Role |
-|---|---|
-| **AVM** | WASM sandbox execution and policy-driven trace verification (Rust) |
-| **DRE** | N-of-M LLM committee; canonical PromptBundle + EvidenceBundle → DecisionTuple (Rust) |
-| **VRP** | Typed, Merkleized reasoning records; admissible vs informational split (Rust) |
-| **ADA** | 7-condition autonomous deployment authorization; runtime guard + rollback proofs (Rust) |
-| **Deployment Contracts** | Policy as code, on-chain; configurable human approval gate (Solidity) |
-| **PoD Consensus** | Two-layer: DRE model committee + validator stake-weighted quorum (Rust / gRPC) |
-| **$MAAT** | Staking, slashing, validator incentives, DAO governance (Solidity) |
-| **ReasoningProof** | Signed, hash-chained reasoning artifacts (Python orchestration layer) |
-| **OrchestratingAgent** | Event-driven ACI/ACD pipeline coordination (Node.js) |
+## Architecture at a glance
 
-## Status
+```mermaid
+flowchart LR
+    Agent["Agent or CI system\nproposes deployment"] --> Policy["P: DeploymentPolicy\nWF(P)"]
+    Agent --> Evidence["E: EvidenceBundle\nAuth(E)"]
+    Evidence --> Proof["pi: ProofDerivation\nCheckR(pi,P,E)"]
+    Policy --> Cert["C: DeploymentCertificate\nAccept(C)"]
+    Evidence --> Cert
+    Proof --> Cert
+    Cert --> Validators["A: Validator attestations\nQuorum(A)"]
+    Validators --> Ledger["JsonlDeploymentLedger\nfinalized record"]
+```
 
-🚧 **Reference Prototype** — Python certificate checker, signed evidence bundles, VRP derivations, validator quorum, and JSONL ledger are available for local experimentation.
+The design separates research concerns cleanly:
 
-📄 **[Read the full MaatProof Whitepaper →](https://www.overleaf.com/read/hvsvqyvzfmhf#89e3b9)**
+1. **Policy is not evidence.** Policy says what must be true; evidence proves facts about a specific deployment.
+2. **Evidence is not reasoning.** Evidence is signed external data; `pi` is the derivation that connects evidence to policy satisfaction.
+3. **Validity is not incentives.** Tokenomics, staking, slashing, and checker markets are accountability layers. They do not change `Accept(C)`.
+4. **Human approval is a policy primitive.** ADA is the default production-authorization model; human approval can be required by a declared policy gate for regulated workloads.
 
 ## Try it in Google Colab
 
-Run the end-to-end Proof-of-Deploy example in [`examples/proof_of_deploy_colab.ipynb`](examples/proof_of_deploy_colab.ipynb). The notebook builds a certificate `C = <P, E, pi, A>`, checks `WF(P)`, `Auth(E)`, `CheckR(pi, P, E)`, and `Quorum(A)`, appends an accepted certificate to a local JSONL ledger, then demonstrates structured failures for missing scan evidence, stale human attestation, wrong environment binding, invalid derivation, and insufficient quorum.
+Open [`examples/proof_of_deploy_colab.ipynb`](examples/proof_of_deploy_colab.ipynb) to run a complete proof-of-deploy flow.
 
-Local setup:
+The notebook demonstrates:
+
+- A valid production deployment certificate.
+- Finality through validator attestations.
+- Local ledger append and replay verification.
+- Rejections for missing scan evidence, stale human attestation, wrong environment binding, invalid derivation steps, and insufficient quorum.
+
+## Local quick start
 
 ```bash
-pip install -e .
+git clone https://github.com/dngoins/MaatProof.git
+cd MaatProof
+pip install -e ".[dev]"
 python -m pytest tests -v
 ```
 
-Python module mapping:
-
-| Formal object | Python module |
-|---|---|
-| `P` deployment policy and `WF(P)` | `maatproof.policy` |
-| `E` evidence bundle and `Auth(E)` | `maatproof.evidence` |
-| `pi` derivation and `CheckR(pi, P, E)` | `maatproof.vrp` |
-| `A` validator attestations and `Quorum(A)` | `maatproof.pod` |
-| `C = <P,E,pi,A>` and `Accept(C)` | `maatproof.certificate` |
-| Finalized certificate log | `maatproof.ledger` |
-| AVM boundary trace-to-evidence binding | `maatproof.avm` |
-
----
-
-## Autonomous Deployment Authority (ADA)
-
-<!-- Addresses EDGE-001, EDGE-004, EDGE-051, EDGE-053 -->
-
-ADA is the MaatProof subsystem that **replaces mandatory human approval** as the protocol
-default for production deployments. It computes a multi-signal deployment score, derives an
-authority level, and either executes an autonomous deployment or raises
-`AutonomousDeploymentBlockedError` — with a full cryptographic proof chain for every decision.
-
-> **Before ADA:** Every production deployment required `HumanApprovalRequiredError` to be
-> resolved by a human approver — even for low-risk, high-confidence changes.  
-> **After ADA:** Human approval is a configurable policy gate for regulated workloads
-> (HIPAA, SOX, PCI-DSS). ADA handles authorization by proof, not by rubber stamp.
-
-### How ADA Works
-
-```
-Agent proposes → AVM gates run → DRE committee → VRP reasoning → ADA scores (0.0–1.0)
-    → Authority level derived → Deploy (or block) → Runtime Guard (15-min window)
-    → Auto-rollback if thresholds breached → Signed RollbackProof on-chain
-```
-
-### Multi-Signal Scoring Model
-
-ADA aggregates five independently verified signals (no self-reporting allowed):
-
-| Signal | Weight | What It Measures |
-|--------|--------|-----------------|
-| `deterministic_gates` | **25%** | All AVM gates pass: lint, compile, security scan, artifact signing |
-| `dre_consensus` | **20%** | DRE N-of-M committee converges on `Approve` |
-| `logic_verification` | **20%** | Formal logic verifier signs off on reasoning |
-| `validator_attestation` | **20%** | Stake-weighted PoD validator quorum attests |
-| `risk_score` | **15%** | `1.0 − normalised_risk` (CVEs, change size, critical paths, test coverage) |
-
-**Total score = weighted sum, range [0.0, 1.0], computed with Python `Decimal` for determinism.**
-
-### Authority Levels
-
-| Level | Score Threshold | Production? | Notes |
-|-------|----------------|-------------|-------|
-| `FULL_AUTONOMOUS` | ≥ 0.90 | ✅ | Requires DAO vote; blocked for HIPAA/SOX |
-| `AUTONOMOUS_WITH_MONITORING` | 0.75–0.89 | ✅ | Auto-rollback guard active |
-| `STAGING_AUTONOMOUS` | 0.60–0.74 | ❌ staging only | |
-| `DEV_AUTONOMOUS` | 0.40–0.59 | ❌ dev only | |
-| `BLOCKED` | < 0.40 | ❌ | `AutonomousDeploymentBlockedError` raised |
-
-### Auto-Rollback Protocol
-
-Every production deployment runs a **15-minute monitoring window** with 10-second metric polls.
-Rollback is triggered automatically when:
-- Error rate > 5% (over any 60-second window)
-- p99 latency > 2× pre-deployment baseline
-- CPU > 95% sustained for > 120 seconds
-- Health check fails 3 consecutive times
-- Metrics become unavailable for ≥ 30 seconds (fail-safe)
-
-Every rollback produces a signed `RollbackProof` (HMAC-SHA256, KMS-sourced key) recorded
-on-chain as a first-class chain-of-custody event.
-
-### MAAT Staking for Deployment
-
-| Environment | Minimum Agent Stake |
-|-------------|---------------------|
-| Development | 100 $MAAT |
-| Staging / UAT | 1,000 $MAAT |
-| Production | 10,000 $MAAT |
-
-Effective minimum = base × `risk_multiplier` (derived from critical paths touched + CVE severity).
-Stake is locked for the deployment round + 30-day challenge window.
-
-### Migrating from `HumanApprovalRequiredError`
+Minimal certificate check:
 
 ```python
-# ✅ Updated catch block for ADA
-try:
-    pipeline.deploy()
-except (HumanApprovalRequiredError, AutonomousDeploymentBlockedError) as e:
-    # AutonomousDeploymentBlockedError carries: reason, authority_level, deployment_score, trace_id
-    handle_blocked_deployment(e)
-```
-
-📐 **[Full ADA architecture decision record →](docs/architecture/ADR-001-autonomous-deployment-authority.md)**  
-📋 **[Complete ADA technical spec →](specs/autonomous-deployment-authority.md)**
-
----
-
-## Architecture
-
-MaatProof operates as a fully autonomous ACI/ACD system. Agents propose, DRE verifies, VRP records reasoning, ADA authorizes, and the chain finalizes — no external CI/CD pipeline required.
-
-### Full Protocol Stack
-
-### Full Protocol Stack
-
-```mermaid
-flowchart LR
-    Agent["🤖 Agent\n(Node.js)"]
-    Contract["📜 Deployment\nContract\n(Solidity)"]
-    AVM["⚙️ AVM\n(Rust/WASM)"]
-    DRE["🧠 DRE\n(Rust)"]
-    VRP["🔍 VRP\n(Rust)"]
-    ADA["🔐 ADA\n(Rust)"]
-    PoD["🗳 PoD Consensus\n(Rust/gRPC)"]
-    Chain["⛓ Chain\n(Rust)"]
-    Prod["🚀 Production"]
-
-    Agent --> Contract --> AVM --> DRE --> VRP --> ADA --> PoD --> Chain --> Prod
-```
-
-### Two-Layer Consensus
-
-```mermaid
-flowchart TD
-    A["Agent submits PromptBundle + EvidenceBundle"] --> B
-
-    subgraph L1["Layer 1 — DRE Model Committee"]
-        B["N-of-M LLM instances (parallel)"]
-        B --> C["Normalize → DecisionTuple"]
-        C --> D{"≥ M quorum?"}
-        D -->|yes| E["CommitteeCertificate"]
-        D -->|no| F["Discard — agent retries"]
-    end
-
-    E --> G
-
-    subgraph L2["Layer 2 — Validator Committee"]
-        G["Validators receive ValidatorInputPackage"]
-        G --> H["Replay via pinned WASM checkers"]
-        H --> I["Verify VRP Merkle root + ADA conditions"]
-        I --> J{"2/3 supermajority?"}
-        J -->|yes| K["FINALIZED"]
-        J -->|dispute| L["Dispute path → governance"]
-        J -->|reject| M["REJECTED"]
-    end
-```
-
-### Orchestrating Agent + Deterministic Layers
-
-```mermaid
-flowchart LR
-    Agent["🤖 Agent\n(Node.js)"]
-    Contract["📜 Deployment\nContract\n(Solidity)"]
-    AVM["⚙️ AVM\n(Rust/WASM)"]
-    DRE["🧠 DRE\n(Rust)"]
-    VRP["🔍 VRP\n(Rust)"]
-    ADA["🔐 ADA\n(Rust)"]
-    PoD["🗳 PoD Consensus\n(Rust/gRPC)"]
-    Chain["⛓ Chain\n(Rust)"]
-    Prod["🚀 Production"]
-
-    Agent --> Contract --> AVM --> DRE --> VRP --> ADA --> PoD --> Chain --> Prod
-```
-
-### Two-Layer Consensus
-
-```mermaid
-flowchart TD
-    A["Agent submits PromptBundle + EvidenceBundle"] --> B
-
-    subgraph L1["Layer 1 — DRE Model Committee"]
-        B["N-of-M LLM instances (parallel)"]
-        B --> C["Normalize → DecisionTuple"]
-        C --> D{"≥ M quorum?"}
-        D -->|yes| E["CommitteeCertificate"]
-        D -->|no| F["Discard — agent retries"]
-    end
-
-    E --> G
-
-    subgraph L2["Layer 2 — Validator Committee"]
-        G["Validators receive ValidatorInputPackage"]
-        G --> H["Replay via pinned WASM checkers"]
-        H --> I["Verify VRP Merkle root + ADA conditions"]
-        I --> J{"2/3 supermajority?"}
-        J -->|yes| K["FINALIZED"]
-        J -->|dispute| L["Dispute path → governance"]
-        J -->|reject| M["REJECTED"]
-    end
-```
-
-### The Orchestrating Agent Model
-
-```python
-agent.on("code_pushed")      -> submit_to_avm()          # AVM validates policy + trace
-agent.on("test_failed")      -> fix_and_retry(max=3)
-agent.on("all_tests_pass")   -> deploy_to_staging()
-agent.on("staging_healthy")  -> submit_prompt_bundle()   # → DRE → VRP → ADA
-agent.on("ada_authorized")   -> deploy_to_prod()         # ADA is protocol default
-agent.on("policy_requires")  -> request_human_approval() # when contract declares it
-agent.on("prod_error_spike") -> rollback()               # runtime guard triggers
-```
-
-> ADA is the protocol default for production authorization. Human approval is a configurable gate declared in the Deployment Contract — required for regulated workloads (SOX, HIPAA, PCI-DSS, CRITICAL tier).
-
----
-
-## Agentic AI Loop
-
-MaatProof uses a fully automated agentic pipeline powered by GitHub Actions and AI agents (Claude + GPT). Every issue flows through a structured sequence of agents before reaching production.
-
-```mermaid
-graph LR
-    A[Planner] --> B[Spec Edge Case Tester]
-    B --> C[Cost Estimator]
-    C --> D[Development\n4 competing branches]
-    D --> E[Judging Agent]
-    E --> F[Human Selects Winner]
-    F --> G[PR Review]
-    G --> H[QA Testing]
-    H --> I[Documenter]
-    I --> J[Release Agent]
-    K[Orchestrator] -.->|monitors all| A
-    K -.-> D
-    K -.-> G
-    L[Nightly Backlog] -.->|seeds issues| A
-```
-
-### Agent Pipeline
-
-| Step | Agent | What it does |
-|------|-------|-------------|
-| 1 | **Planner** | Decomposes feature request into 9 scoped child issues with acceptance criteria |
-| 2 | **Spec Edge Case Tester** | Generates up to 100 edge cases, validates specs reach ≥90% coverage |
-| 3 | **Cost Estimator** | Compares Azure vs AWS vs GCP costs, calculates ACI/ACD savings using DORA metrics |
-| 4 | **Development** | Spawns 4 concurrent implementations (Claude Sonnet, Claude Opus, GPT 5.3 Codex, GPT 5.4) |
-| 5 | **Judging** | Scores all 4 on Big O complexity, code quality, cost, performance, security |
-| 6 | **PR Review** | Posts 10-dimension review score on every PR |
-| 7 | **QA Testing** | Validates against 10 comparison dimensions with pass/fail criteria |
-| 8 | **Documenter** | Updates all public-facing docs, changelog, and diagrams |
-| 9 | **Release** | Creates semantic version tag and GitHub Release |
-| ∞ | **Orchestrator** | Monitors all events, re-triggers stalled agents (max 15 retries) |
-| 🕐 | **Nightly Backlog** | Cron job seeds issues from `docs/requirements/backlog.md` every weekday at 7am UTC |
-
----
-
-## Why ACI/ACD?
-
-### Advantages
-
-| Advantage | Why it matters |
-|---|---|
-| **Self-healing** | Agent doesn't just report a failing test — it fixes it, reruns, and redeploys |
-| **Context-aware gates** | Agent understands *why* a test fails, not just that it failed |
-| **Natural language policy** | "Don't deploy on Fridays, unless it's a security fix" — trivial for an agent, painful in YAML |
-| **Adaptive workflows** | Agent skips Docker build gate when only a README changed |
-| **Proactive** | Agent monitors production metrics and opens its own issue: "Error rate spiked, rolling back" |
-| **No YAML hell** | No `.github/workflows/` archaeology |
-
-### Real Risks (and how MaatProof addresses them)
-
-| Risk | Mitigation |
-|---|---|
-| **Non-determinism** | DRE: N-of-M committee quorum makes determinism a system property; VRP Merkle DAG makes every reasoning step auditable |
-| **Auditability gap** | ReasoningProof = signed artifact; VRP admissible reasoning is on-chain and verifiable |
-| **Blast radius** | ADA requires 7 conditions including zero blocking CVEs; runtime guard auto-rolls back on any error spike |
-| **Runaway loops** | Bounded retries (max 3); runtime guard auto-rolls back on error spike |
-| **Rate limits** | Orchestrator monitors and re-triggers with max 15 retries per item |
-| **Security surface** | Agent authority limits in Constitution §5; dispute path prevents bad slashing |
-| **LLM error rate** | 4-branch competing implementations + Judging Agent; DRE committee quorum as L1 safety |
-
----
-
-## 💰 Cost Savings — ACI/ACD vs Traditional CI/CD
-
-> _Issue #144: [ACI/ACD Engine - Core Pipeline] Documentation — ProofBuilder/ProofVerifier/ReasoningChain API reference, pipeline event catalogue, trust anchor gate table (5 gates), audit log schema (HMAC-SHA256), human approval invariant (Constitution §3), ACI+ACD architecture diagrams_
-
-| Metric | Traditional | MaatProof | Savings |
-|--------|-------------|-----------|---------|
-| Core Pipeline Docs build cost (#144) | $2,705 | $151 | **94%** |
-| Core Pipeline Docs runtime cost | — | **$0/yr** | GitHub Pages: free |
-| New engineer onboarding (Core Pipeline) | 4 days | < 1 day | **75% faster** |
-| VRP Unit Tests build cost (#128) | $2,772 | $180 | **93%** |
-| VRP quality ROI (defect-escape prevention) | — | **2,323%** | $4,182/yr saved |
-| ADA Integration Tests build cost (#135) | $3,731 | $118 | **97%** |
-| DRE feature build cost (9 issues, #106–#141) | $34,188 | $1,959 | **94%** |
-| **Combined build cost (all analyzed issues)** | **$52,463** | **$2,804** | **95%** |
-| Annual developer savings | — | $208,320 | **3,472 hrs/yr** |
-| Auto-rollback SLA validation in CI | Not validated | **≤60s** verified per PR | **100% coverage** |
-| Deployment frequency | 1×/week | 10×/day | **70× faster** |
-| Lead time for changes | 5 days | 2 hours | **60× faster** |
-| Change failure rate | 15% | 3% | **80% reduction** |
-| Mean time to recovery | 4 hours | 15 min | **94% faster** |
-| Documentation staleness | 14 days avg | 0 days | **100% improvement** |
-| DORA rating | Low | **Elite** | Top 10% globally |
-| Year 1 ROI | — | — | **11,960%** |
-| 5-year TCO savings | — | — | **$1,835,595** |
-
-> _Last estimated: 2026-04-23 · Issue #144 [Core Pipeline Documentation] · Run #9 · [Full report →](docs/reports/cost-estimation-report.md) · [Dashboard →](docs/reports/cost-summary.html)_
----
-
-## Verifiable Reasoning Protocol (VRP)
-
-<!-- Addresses EDGE-059, EDGE-068, EDGE-069, EDGE-070 -->
-
-The **Verifiable Reasoning Protocol (VRP)** is the formal-logic layer that structures every agent reasoning step as a typed, machine-checkable record. Unlike a plain hash-chain (which only proves a trace was not modified), VRP proves the reasoning is *logically sound* — that conclusions follow from premises via a named inference rule, confirmed by validators.
-
-### VRP Pipeline
-
-```mermaid
-flowchart LR
-    Agent["🤖 Agent\nCreates VerifiableStep\n(premises → rule → conclusion)"]
-    LV["🔍 LogicVerifier\n(ProofChain.verify_integrity)\nValidates hash chain"]
-    VN["🗳 Validator Network\nReplay + quorum sign\nAttestationRecord"]
-    AR["📜 Attestation\nHash-chained records\non-chain (FULLY_VERIFIED)"]
-    Deploy["🚀 Deploy\nAVM accepts chain\n(verification_level matches env)"]
-
-    Agent --> LV --> VN --> AR --> Deploy
-```
-
-### Quick-Start: Create and Verify a VerifiableStep
-
-```python
-import uuid, time
-from maatproof.vrp import (
-    InferenceRule, VerifiableStep, VerificationLevel,
-    ProofChain, AttestationRecord, make_step_range_hash,
+from maatproof import (
+    CertificateChecker,
+    DeploymentCertificate,
+    DeploymentPolicy,
+    DeploymentRequest,
+    EvidenceBundle,
+    PolicyPredicate,
+    ProofDerivation,
+    ProofStep,
+    signed_evidence,
+    simulate_validators,
 )
 
-# 1. Create a VerifiableStep — the core VRP unit
-step = VerifiableStep(
-    step_id=0,
-    premises=[
-        "Test coverage = 87%",
-        "Policy requires coverage ≥ 80%",
+evidence_key = b"evidence-secret"
+validators = {
+    "validator-a": b"validator-a-secret",
+    "validator-b": b"validator-b-secret",
+    "validator-c": b"validator-c-secret",
+}
+now = 1_700_000_100.0
+
+request = DeploymentRequest(
+    deployment_id="deploy-123",
+    service="checkout",
+    environment="production",
+    commit_sha="abc123",
+    artifact_hash="sha256:artifact",
+    requested_by="agent:planner",
+)
+
+policy = DeploymentPolicy(
+    policy_id="checkout-prod",
+    version=1,
+    environment="production",
+    freshness_seconds={"scan_report": 3600},
+    predicates=[
+        PolicyPredicate("test_passed", {"suite": "unit"}),
+        PolicyPredicate(
+            "vuln_count",
+            {"severity": "critical", "operator": "<=", "threshold": 0},
+        ),
+        PolicyPredicate("environment_matches", {"target": "production"}),
     ],
-    inference_rule=InferenceRule.THRESHOLD,
-    conclusion="Test coverage requirement is satisfied.",
-    confidence=0.98,
-    evidence=["sha256:a3f8b2c1d4e5f6a7b8c9d0e1f2a3b4c5"],
 )
 
-# 2. Build a ProofChain and add steps
-chain = ProofChain(
-    chain_id=str(uuid.uuid4()),
-    agent_id="did:maat:agent:abc123def456789a",
-    verification_level=VerificationLevel.SELF_VERIFIED,   # dev environment
-)
-chain.add_step(step)
-
-# 3. Finalize: computes root_hash and cumulative_hash
-root_hash = chain.finalize()
-print(f"Root hash: {root_hash}")
-
-# 4. Attest (SELF_VERIFIED uses HMAC-SHA256)
-secret_key = b"shared-secret-from-kms"
-step_range_hash = make_step_range_hash(root_hash, 0, 0)
-sig = AttestationRecord.sign_hmac(
-    chain_id=chain.chain_id,
-    step_range_hash=step_range_hash,
-    previous_hash="",
-    stake_amount="0",
-    secret_key=secret_key,
-)
-rec = AttestationRecord(
-    record_id=str(uuid.uuid4()),
-    validator_id="did:maat:agent:abc123def456789a",
-    timestamp=time.time(),
-    signature=sig,
-    previous_hash="",
-    stake_amount="0",
-    step_range_hash=step_range_hash,
-    chain_id=chain.chain_id,
-    verification_level=VerificationLevel.SELF_VERIFIED,
-)
-chain.add_attestation(rec)
-
-# 5. Verify integrity and signature
-assert chain.verify_integrity(), "Hash chain is broken!"
-assert rec.verify_hmac(secret_key), "Attestation signature is invalid!"
-assert chain.is_quorum_reached(total_stake=0), "Quorum not reached!"
-
-print(f"✅ VerifiableStep verified — chain ID: {chain.chain_id}")
-```
-
-### The 7 Inference Rules
-
-| Rule | Formal Form | Use Case |
-|------|------------|----------|
-| `modus_ponens` | P, P→Q ⊢ Q | Test passes → deployment is safe |
-| `conjunction` | P, Q ⊢ P∧Q | Combine multiple passing checks |
-| `disjunctive_syllogism` | P∨Q, ¬P ⊢ Q | One path fails, deduce the other |
-| `induction` | Base + inductive steps ⊢ ∀n P(n) | Prove all N retry attempts acceptable |
-| `abduction` | Q, P→Q ⊢ P (best explanation) | Infer root cause from observed symptom |
-| `data_lookup` | Sources ⊢ retrieved value | Fetch test coverage number from CI output |
-| `threshold` | value ≥ minimum ⊢ gate passes | coverage ≥ 80%, risk_score ≤ 700 |
-
-Full formal definitions, Python usage examples for each rule, and the complete data model are in [`specs/vrp-data-model-spec.md`](specs/vrp-data-model-spec.md).
-
-### Verification Levels
-
-| Level | Environment | Quorum | Human-in-loop |
-|-------|-------------|--------|---------------|
-| `SELF_VERIFIED` | development | Agent only (HMAC) | ❌ Never |
-| `PEER_VERIFIED` | staging | ≥ 1 peer validator | ⚙️ Optional (policy gate) |
-| `FULLY_VERIFIED` | production | 2/3 stake-weighted | ⚙️ Optional (ADA default; required for SOX/HIPAA) |
-
-> ADA (Autonomous Deployment Authority) is the protocol default for production. Human approval is declared in the Deployment Contract and is required for regulated workloads (SOX, HIPAA, PCI-DSS).
-
-For the full VRP specification see [`specs/vrp-data-model-spec.md`](specs/vrp-data-model-spec.md) and [`specs/vrp-spec.md`](specs/vrp-spec.md).
-
----
-
-## Getting Started
-
-```bash
-# Clone the repository
-git clone https://github.com/dngoins/MaatProof.git
-cd MaatProof
-
-# Install dependencies
-pip install -e ".[dev]"
-
-# Run tests
-python -m pytest tests/ -v
-
-# Build a reasoning proof (legacy ReasoningProof API)
-python -c "
-from maatproof.proof import ProofBuilder, ProofVerifier, ReasoningStep
-
-builder = ProofBuilder(secret_key=b'my-secret', model_id='gpt-v1')
-proof = builder.build(steps=[
-    ReasoningStep(step_id=0, context='PR #42 failing',
-                  reasoning='Mock return value changed',
-                  conclusion='Update mock to fix', timestamp=1700000000.0)
+evidence = EvidenceBundle([
+    signed_evidence(
+        "commit",
+        "commit_snapshot",
+        {"deployment_id": request.deployment_id, "commit_sha": request.commit_sha},
+        "git",
+        now,
+        evidence_key,
+    ),
+    signed_evidence(
+        "artifact",
+        "build_artifact",
+        {"deployment_id": request.deployment_id, "artifact_hash": request.artifact_hash},
+        "builder",
+        now,
+        evidence_key,
+    ),
+    signed_evidence(
+        "test",
+        "test_result",
+        {"deployment_id": request.deployment_id, "suite": "unit", "passed": True},
+        "pytest",
+        now,
+        evidence_key,
+    ),
+    signed_evidence(
+        "scan",
+        "scan_report",
+        {"deployment_id": request.deployment_id, "vulnerabilities": {"critical": 0}},
+        "scanner",
+        now,
+        evidence_key,
+    ),
+    signed_evidence(
+        "env",
+        "environment_descriptor",
+        {"deployment_id": request.deployment_id, "environment": "production"},
+        "cluster",
+        now,
+        evidence_key,
+    ),
 ])
-print(f'Proof ID: {proof.proof_id}')
-print(f'Root hash: {proof.root_hash}')
-print(f'Verified: {ProofVerifier(b\"my-secret\").verify(proof)}')
-"
 
-# Build a VRP VerifiableStep (see VRP section above for full example)
-python -c "
-from maatproof.vrp import VerifiableStep, InferenceRule
-step = VerifiableStep(
-    step_id=0,
-    premises=['Test coverage = 87%', 'Policy requires coverage >= 80%'],
-    inference_rule=InferenceRule.THRESHOLD,
-    conclusion='Test coverage requirement is satisfied.',
-    confidence=0.98,
-    evidence=[],
+proof = ProofDerivation(
+    final_conclusion=f"deploy_authorized:{request.deployment_id}",
+    steps=[
+        ProofStep("test-pass", "TEST_PASS", "test_passed:unit", ["test"]),
+        ProofStep("scan-ok", "VULN_OK", "vuln_count:critical<=0", ["scan"]),
+        ProofStep("env-ok", "ENVIRONMENT_MATCH", "environment_matches", ["env"]),
+        ProofStep(
+            "policy",
+            "POLICY_SATISFIED",
+            "policy_satisfied",
+            premises=["test-pass", "scan-ok", "env-ok"],
+        ),
+        ProofStep(
+            "deploy",
+            "DEPLOY_AUTH",
+            f"deploy_authorized:{request.deployment_id}",
+            premises=["policy"],
+        ),
+    ],
 )
-print(f'Step hash will be set by ProofChain: {step.step_hash!r}')
-print(f'Inference rule: {step.inference_rule.value}')
-"
+
+certificate = DeploymentCertificate(request, policy, evidence, proof)
+checker = CertificateChecker(evidence_key, now=now)
+certificate.attestations = simulate_validators(certificate, checker, validators, now)
+
+report = CertificateChecker(evidence_key, validators, now=now).accept(certificate)
+assert report.accepted, [failure.code for failure in report.failures]
+print(report.certificate_digest)
 ```
 
----
+## What "PhD rigor" means here
 
-## Project Structure
+MaatProof is not just a CI helper script. It is a testbed for deployment authorization as a verifiable system:
 
-```
-CONSTITUTION.md          # Pipeline invariants — the policy layer above code
-CLAUDE.md                # Agent session instructions
-specs/
-  dre-spec.md            # Deterministic Reasoning Engine (Rust)
-  vrp-spec.md            # Verifiable Reasoning Protocol (Rust)
-  ada-spec.md            # Autonomous Deployment Authority (Rust)
-  pod-consensus-spec.md  # Two-layer PoD consensus — DRE + validator committees
-  avm-spec.md            # Agent Virtual Machine
-  agent-identity-spec.md # Agent DID and key management
-docs/
-  01-architecture.md     # Full 9-component stack + tech stack callouts
-  02-consensus-proof-of-deploy.md  # Block structure, MaatBlock Rust struct
-  08-roadmap.md          # Phase roadmap (full ACD from day 1)
-  requirements/          # Feature specs and backlog
-  reports/               # Cost estimation and analysis reports
+- **Formal object model:** certificate validity is stated as `Accept(C)` over named sub-checks.
+- **Deterministic replay:** verifiers can recompute canonical hashes, evidence roots, proof roots, and validator quorum.
+- **Falsifiable examples:** tests include both accepted certificates and precise rejection cases.
+- **Traceability:** docs, specs, tests, and code map back to policy, evidence, proof, and attestation obligations.
+- **Accountable finality:** a deployment is not "good because the agent said so"; it is accepted only after replay and quorum.
+- **Incentive separation:** economic systems can punish bad actors, but validity remains a pure checker result.
+
+## Repository layout
+
+```text
+CONSTITUTION.md          # Project invariants and agent workflow rules
+docs/                    # Architecture docs, roadmap, requirements, reports
+specs/                   # Protocol specifications for AVM, VRP, PoD, ADA, DRE
+contracts/               # Solidity contract sketches
+examples/
+  proof_of_deploy_colab.ipynb
 maatproof/
-  proof.py               # ReasoningProof, ProofBuilder, ProofVerifier
-  chain.py               # ReasoningChain fluent builder
-  orchestrator.py        # OrchestratingAgent — event-driven pipeline
-  pipeline.py            # ACIPipeline and ACDPipeline
-  layers/
-    deterministic.py     # Trust anchor gates (lint, compile, security)
-    agent.py             # Agent layer (fix, review, deploy decisions)
-.github/
-  agents/                # Agent persona files (planner, developer, QA, etc.)
-  workflows/             # GitHub Actions workflows for each agent
-tests/                   # Test suite (pytest)
+  canonical.py           # Canonical JSON, SHA-256, HMAC helpers
+  certificate.py         # DeploymentCertificate and Accept(C)
+  policy.py              # DeploymentPolicy and WF(P)
+  evidence.py            # EvidenceObject, EvidenceBundle, Auth(E)
+  vrp.py                 # ProofDerivation and CheckR(pi,P,E)
+  pod.py                 # ValidatorAttestation and Quorum(A)
+  ledger.py              # Append-only JSONL deployment ledger
+  avm.py                 # AVM boundary trace model
+  proof.py               # Legacy hash-chained ReasoningProof primitive
+  pipeline.py            # ACI/ACD pipeline prototype
+  orchestrator.py        # Event-driven agent orchestration
+tests/                   # Pytest suite, including proof-of-deploy cases
 ```
 
----
+## Current status
+
+MaatProof is a **reference prototype**, not a production deployment network. The Python package is intended to make the research model executable, inspectable, and easy to challenge.
+
+Planned hardening paths include:
+
+- Rust/WASM checkers for production AVM and VRP replay.
+- Stronger signature adapters such as Ed25519 and post-quantum schemes.
+- On-chain deployment contracts and checker registries.
+- Stake-weighted validator networks with dispute and slashing paths.
+- Runtime guard and rollback proofs for finalized deployments.
 
 ## Contributing
 
-1. Read [`CONSTITUTION.md`](CONSTITUTION.md) — the rules are non-negotiable
-2. Spec first, code second — every feature needs a user story and acceptance criteria
-3. One function per PR — keep changes small and reversible
-4. All agent output requires human review before merge
+This repo follows [`CONSTITUTION.md`](CONSTITUTION.md):
 
-See [CLAUDE.md](CLAUDE.md) for agent session instructions and the full label taxonomy.
-
----
+1. Spec first, code second.
+2. Every artifact must trace to acceptance criteria.
+3. Human review is required before merge.
+4. Small, reversible changes are preferred.
+5. Deterministic gates and cryptographic proof obligations cannot be bypassed.
 
 ## License
 
 [CC0-1.0](LICENSE)
 
----
-
-> ***"The day LLMs have cryptographically verifiable, deterministic reasoning is the day you can drop the pipeline entirely."***
+> "The day LLMs have cryptographically verifiable, deterministic reasoning is the day you can drop the pipeline entirely."
