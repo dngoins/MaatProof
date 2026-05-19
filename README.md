@@ -2,7 +2,7 @@
 
 MaatProof is a research prototype for **proof-carrying deployment**: every deployment decision is packaged with a machine-checkable certificate that explains what was deployed, which evidence supports it, which policy it satisfies, and which validators attested to it.
 
-In plain terms: this repo asks, "Can an AI-assisted CI/CD system produce a deployment decision that an independent verifier can replay and trust?" The Python code demonstrates a minimal but working answer.
+In plain terms: this repo asks, "Can an AI-assisted CI/CD system produce a deployment decision that an independent verifier can replay and trust?" The `PYTHON/` implementation demonstrates the original minimal working answer, and `RUST/` contains a Rust implementation of the same core model.
 
 ## Research thesis
 
@@ -33,22 +33,22 @@ This is the PhD-rigor layer of the project: validity is separated into formal ob
 
 ## What this repo showcases
 
-This repository combines a formal protocol sketch with executable Python code:
+This repository combines a formal protocol sketch with executable Python and Rust code:
 
 | Showcase | What to inspect |
 |---|---|
-| **Proof-carrying deployment certificate** | `maatproof.certificate` |
-| **Policy well-formedness (`WF(P)`)** | `maatproof.policy` |
-| **Signed, canonical evidence (`Auth(E)`)** | `maatproof.evidence`, `maatproof.canonical` |
-| **Verifiable reasoning derivation (`CheckR`)** | `maatproof.vrp` |
-| **Validator quorum and finality (`Quorum(A)`)** | `maatproof.pod` |
-| **Append-only local deployment ledger** | `maatproof.ledger` |
-| **AVM boundary trace-to-evidence conversion** | `maatproof.avm` |
-| **Hash-chained reasoning proofs** | `maatproof.proof`, `maatproof.chain` |
-| **Agentic CI/CD orchestration prototype** | `maatproof.pipeline`, `maatproof.orchestrator`, `maatproof.layers` |
+| **Proof-carrying deployment certificate** | `PYTHON/maatproof/certificate.py`, `RUST/src/lib.rs` |
+| **Policy well-formedness (`WF(P)`)** | `PYTHON/maatproof/policy.py`, `RUST/src/lib.rs` |
+| **Signed, canonical evidence (`Auth(E)`)** | `PYTHON/maatproof/evidence.py`, `PYTHON/maatproof/canonical.py`, `RUST/src/lib.rs` |
+| **Verifiable reasoning derivation (`CheckR`)** | `PYTHON/maatproof/vrp.py`, `RUST/src/lib.rs` |
+| **Validator quorum and finality (`Quorum(A)`)** | `PYTHON/maatproof/pod.py`, `RUST/src/lib.rs` |
+| **Append-only local deployment ledger** | `PYTHON/maatproof/ledger.py`, `RUST/src/lib.rs` |
+| **AVM boundary trace-to-evidence conversion** | `PYTHON/maatproof/avm.py`, `RUST/src/lib.rs` |
+| **Hash-chained reasoning proofs** | `PYTHON/maatproof/proof.py`, `PYTHON/maatproof/chain.py`, `RUST/src/lib.rs` |
+| **Agentic CI/CD orchestration prototype** | `PYTHON/maatproof/pipeline.py`, `PYTHON/maatproof/orchestrator.py`, `PYTHON/maatproof/layers`, `RUST/src/lib.rs` |
 | **Executable demonstration** | `examples/proof_of_deploy_colab.ipynb` |
 
-The implementation intentionally uses HMAC-SHA256 and the Python standard library so the reference model is easy to run in tests and Colab. Production hardening can replace the signature backend with Ed25519 or post-quantum schemes without changing the certificate validity equation.
+The implementations intentionally use HMAC-SHA256 so the reference model is easy to run in tests and Colab. Production hardening can replace the signature backend with Ed25519 or post-quantum schemes without changing the certificate validity equation.
 
 ## Architecture at a glance
 
@@ -87,9 +87,23 @@ The notebook demonstrates:
 ```bash
 git clone https://github.com/dngoins/MaatProof.git
 cd MaatProof
+cd PYTHON
 pip install -e ".[dev]"
 python -m pytest tests -v
 ```
+
+Rust:
+
+```bash
+git clone https://github.com/dngoins/MaatProof.git
+cd MaatProof
+cd RUST
+cargo test
+```
+
+## Implementation samples
+
+The Python sample below shows the original reference flow. For Rust usage, including a minimal certificate check and pointers to end-to-end test samples, see [`RUST/README.md`](RUST/README.md) and `RUST/src/lib.rs`.
 
 Minimal certificate check:
 
@@ -232,24 +246,18 @@ specs/                   # Protocol specifications for AVM, VRP, PoD, ADA, DRE
 contracts/               # Solidity contract sketches
 examples/
   proof_of_deploy_colab.ipynb
-maatproof/
-  canonical.py           # Canonical JSON, SHA-256, HMAC helpers
-  certificate.py         # DeploymentCertificate and Accept(C)
-  policy.py              # DeploymentPolicy and WF(P)
-  evidence.py            # EvidenceObject, EvidenceBundle, Auth(E)
-  vrp.py                 # ProofDerivation and CheckR(pi,P,E)
-  pod.py                 # ValidatorAttestation and Quorum(A)
-  ledger.py              # Append-only JSONL deployment ledger
-  avm.py                 # AVM boundary trace model
-  proof.py               # Legacy hash-chained ReasoningProof primitive
-  pipeline.py            # ACI/ACD pipeline prototype
-  orchestrator.py        # Event-driven agent orchestration
-tests/                   # Pytest suite, including proof-of-deploy cases
+PYTHON/
+  maatproof/              # Original Python reference package
+  tests/                  # Pytest suite, including proof-of-deploy cases
+  pyproject.toml          # Python package metadata
+RUST/
+  Cargo.toml              # Rust crate metadata
+  src/lib.rs              # Rust implementation and unit tests
 ```
 
 ## Current status
 
-MaatProof is a **reference prototype**, not a production deployment network. The Python package is intended to make the research model executable, inspectable, and easy to challenge.
+MaatProof is a **reference prototype**, not a production deployment network. The Python and Rust packages are intended to make the research model executable, inspectable, and easy to challenge.
 
 Planned hardening paths include:
 
