@@ -4,9 +4,15 @@ MaatProof is a research prototype for **proof-carrying deployment**: every deplo
 
 The day autonomous agents can produce cryptographically bound, deterministic, machine-checkable deployment certificates is the day CI/CD stops being the authority of deployment and becomes the evidence layer for proof-carrying deployment.
 
-In plain terms: this repo asks, "Can an AI-assisted CI/CD system produce a deployment decision that an independent verifier can replay and trust?" The Python code demonstrates a minimal but working answer.
+## Simple explanation
 
-## Research thesis
+Today, most deployment systems approve releases by running a pipeline and storing logs. Those logs are useful, but they are not a proof. They show what the system claims happened, not a compact certificate that another machine can independently replay.
+
+MaatProof turns a deployment into a package of proof. It says: here is the policy, here is the evidence, here is the reasoning that connects the evidence to the policy, and here are the validator attestations that finalized the decision. If any part is missing, stale, tampered with, or logically unsupported, the deployment certificate is rejected with a specific reason.
+
+For a non-technical reader: this repo is like a black box recorder for deployments, but with stronger guarantees. It does not merely record that an AI agent approved a release. It shows the receipts and lets another verifier check whether the approval should have been trusted.
+
+## Research perspective
 
 Modern CI/CD logs tell you what happened. MaatProof aims to prove why a deployment was allowed.
 
@@ -31,7 +37,7 @@ The acceptance rule is explicit and replayable:
 Accept(C) = WF(P) && Auth(E) && CheckR(pi, P, E) && Quorum(A)
 ```
 
-This is the PhD-rigor layer of the project: validity is separated into formal obligations, each obligation has a deterministic checker, and rejection returns structured reasons instead of an opaque failure.
+The model is deliberately decomposed into independent proof obligations. Policy validity, evidence authenticity, reasoning admissibility, and validator finality are checked separately so the system can explain exactly which obligation failed.
 
 ## What this repo showcases
 
@@ -228,7 +234,7 @@ assert report.accepted, [failure.code for failure in report.failures]
 print(report.certificate_digest)
 ```
 
-## What "PhD rigor" means here
+## Verification guarantees
 
 MaatProof is not just a CI helper script. It is a testbed for deployment authorization as a verifiable system:
 
