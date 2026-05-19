@@ -6,8 +6,9 @@ MaatProof is developed under the assumption that **full ACD is the operating mod
 the beginning**. The roadmap sequences the proof primitives needed to make autonomous
 deployment safe — it does not treat autonomous production deploy as a speculative endpoint.
 
-Sequence: canonical bundles → DRE normalization → VRP checkers → validator replay →
-runtime guards → staking/slashing → ecosystem integrations → optional ZK upgrades
+Immediate sequence: Python local certificate checker → signed evidence bundle generation and canonicalization → local validator replay/quorum simulator → JSONL deployment ledger prototype → incentive simulation → post-quantum signature experiment.
+
+Production-hardening sequence: canonical bundles → DRE normalization → Rust/WASM VRP checkers → validator replay → runtime guards → staking/slashing → ecosystem integrations → optional ZK upgrades.
 
 ---
 
@@ -20,8 +21,9 @@ gantt
     axisFormat  %b %Y
 
     section Phase 1 Genesis
-    PromptBundle + EvidenceBundle (Rust)  :p1a, 2025-01, 3M
-    AVM v0.1 trace recording (Rust/WASM) :p1b, 2025-01, 3M
+    Python Proof-of-Deploy prototype      :p1p, 2025-01, 1M
+    PromptBundle + EvidenceBundle (Rust)  :p1a, after p1p, 3M
+    AVM v0.1 trace recording (Rust/WASM) :p1b, after p1p, 3M
     Basic Deployment Contracts (Solidity) :p1c, 2025-02, 2M
     Node.js SDK alpha                     :p1d, 2025-02, 2M
 
@@ -66,6 +68,7 @@ gantt
 
 | Deliverable | Tech | Description |
 |---|---|---|
+| Proof-of-Deploy prototype | Python | Local certificate checker for `C = <P,E,pi,A>`, signed evidence, VRP derivations, validator quorum, JSONL ledger, and Colab walkthrough |
 | PromptBundle (content-addressed) | Rust | Canonical serialization of all deployment context |
 | EvidenceBundle | Rust | Content-addressed artifact collection |
 | AVM v0.1 | Rust / WASM | Trace recording and basic WASM sandbox replay |

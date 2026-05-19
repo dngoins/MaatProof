@@ -17,6 +17,16 @@ Public API::
 """
 
 from .chain import ReasoningChain
+from .avm import AgentAction, DeploymentTrace, ToolTrace
+from .certificate import (
+    AcceptanceFailure,
+    AcceptanceReport,
+    CertificateChecker,
+    CertificateDigest,
+    DeploymentCertificate,
+    DeploymentRequest,
+)
+from .evidence import EvidenceAuthReport, EvidenceBundle, EvidenceObject, signed_evidence
 from .exceptions import (
     GateFailureError,
     HumanApprovalRequiredError,
@@ -31,9 +41,19 @@ from .layers.deterministic import (
     GateResult,
     GateStatus,
 )
+from .ledger import JsonlDeploymentLedger, LedgerEntry
 from .orchestrator import AuditEntry, OrchestratingAgent, PipelineEvent
 from .pipeline import ACDPipeline, ACIPipeline, PipelineConfig
+from .pod import (
+    FinalityReport,
+    QuorumRule,
+    ValidatorAttestation,
+    quorum_finality,
+    simulate_validators,
+)
+from .policy import DeploymentPolicy, PolicyCheckReport, PolicyPredicate
 from .proof import ProofBuilder, ProofVerifier, ReasoningProof, ReasoningStep
+from .vrp import ProofDerivation, ProofStep, VrpCheckReport, check_derivation
 
 __version__ = "0.1.0"
 
@@ -63,6 +83,37 @@ __all__ = [
     "ACIPipeline",
     "ACDPipeline",
     "PipelineConfig",
+    # Proof-of-Deploy certificate core
+    "AcceptanceFailure",
+    "AcceptanceReport",
+    "CertificateChecker",
+    "CertificateDigest",
+    "DeploymentCertificate",
+    "DeploymentRequest",
+    # Policy and evidence
+    "DeploymentPolicy",
+    "PolicyCheckReport",
+    "PolicyPredicate",
+    "EvidenceAuthReport",
+    "EvidenceBundle",
+    "EvidenceObject",
+    "signed_evidence",
+    # VRP and finality
+    "ProofDerivation",
+    "ProofStep",
+    "VrpCheckReport",
+    "check_derivation",
+    "FinalityReport",
+    "QuorumRule",
+    "ValidatorAttestation",
+    "quorum_finality",
+    "simulate_validators",
+    "JsonlDeploymentLedger",
+    "LedgerEntry",
+    # AVM boundary
+    "AgentAction",
+    "DeploymentTrace",
+    "ToolTrace",
     # Exceptions
     "MaatProofError",
     "ProofVerificationError",

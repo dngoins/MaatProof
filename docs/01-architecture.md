@@ -5,11 +5,11 @@
 ```mermaid
 flowchart LR
     A["🤖 Agent\n(signs + stakes)"] --> B["📜 Deployment\nContract\n(Solidity)"]
-    B --> C["⚙️ AVM\n(Rust/WASM)"]
-    C --> D["🧠 DRE\n(Rust)"]
-    D --> E["✅ VRP\n(Rust)"]
-    E --> F["🔐 ADA\n(Rust)"]
-    F --> G["🗳️ PoD Consensus\n(Rust/gRPC)"]
+    B --> C["⚙️ AVM Boundary\n(Python prototype,\nfuture Rust/WASM)"]
+    C --> D["🧠 Evidence Bundle\n(Python canon + HMAC)"]
+    D --> E["✅ VRP\n(Python CheckR,\nfuture Rust)"]
+    E --> F["🔐 Certificate Checker\nAccept(C)"]
+    F --> G["🗳️ PoD Consensus\n(Python local replay,\nfuture Rust/gRPC)"]
     G --> H["⛓️ MaatProof\nChain"]
     H --> I["🚀 Production\n+ Runtime Guard"]
     F -.->|"if policy\nrequires it"| J["👤 Human\nApproval\n(policy gate)"]
@@ -18,11 +18,11 @@ flowchart LR
 
 1. Agent proposes deployment with signed identity and staked $MAAT
 2. Deployment Contract encodes on-chain policy rules
-3. AVM executes and records reasoning trace in WASM sandbox (Rust)
-4. DRE builds canonical PromptBundle, runs N-of-M model committee (Rust)
-5. VRP compiles admissible reasoning into a Merkleized DAG (Rust)
-6. ADA verifies all 7 conditions and emits signed authorization (Rust)
-7. Proof-of-Reasoning Consensus: validators replay and attest (Rust/gRPC)
+3. AVM boundary captures externally observable tool traces as typed evidence
+4. Evidence bundle canonicalization signs and authenticates `E`
+5. VRP checks admissible derivation `pi` with deterministic Python `CheckR`
+6. Certificate checker evaluates `Accept(C) = WF(P) && Auth(E) && CheckR(pi,P,E) && Quorum(A)`
+7. Proof-of-Deploy Consensus: validators replay and attest locally in Python, with Rust/gRPC planned for production
 8. Finalized block written on-chain with full audit record
 9. Production Gate unlocks; Runtime Guard monitors with auto-rollback
 
@@ -76,7 +76,32 @@ agent:planner → agent:spec-edge-test → spec:passed
 
 ## Components
 
-**Tech stack:** Rust (AVM, DRE, VRP, consensus engine, cryptographic primitives) · Node.js (orchestrator agent, integrations, SDK) · Solidity (on-chain contracts) · WASM (sandbox execution)
+**Tech stack:** Python reference prototype (`maatproof.policy`, `maatproof.evidence`, `maatproof.vrp`, `maatproof.pod`, `maatproof.certificate`, `maatproof.ledger`, `maatproof.avm`) · Rust/WASM planned for production AVM/VRP/DRE/consensus hardening · Node.js planned for orchestrator integrations · Solidity for on-chain contracts and incentives
+
+## Python Proof-of-Deploy Reference Prototype
+
+The repository now includes an executable Python implementation of the formal certificate model from the Proof-Carrying Deployment paper:
+
+```mermaid
+flowchart LR
+    P["P: DeploymentPolicy\nWF(P)"] --> C["C: DeploymentCertificate\nAccept(C)"]
+    E["E: EvidenceBundle\nAuth(E)"] --> C
+    PI["pi: ProofDerivation\nCheckR(pi,P,E)"] --> C
+    A["A: ValidatorAttestation[]\nQuorum(A)"] --> C
+    C --> L["JsonlDeploymentLedger\nfinalized certificate log"]
+```
+
+| Formal term | Python implementation | Responsibility |
+|---|---|---|
+| `P` | `maatproof.policy.DeploymentPolicy` | Policy predicates, environment binding, optional human-attestation rule, and `WF(P)` |
+| `E` | `maatproof.evidence.EvidenceBundle` | Signed evidence objects, canonical ordering, freshness/dependency checks, and `Auth(E)` |
+| `pi` | `maatproof.vrp.ProofDerivation` | Typed admissible proof steps and deterministic `CheckR(pi, P, E)` |
+| `A` | `maatproof.pod.ValidatorAttestation` | Validator signatures, accept/reject/dispute decisions, and quorum finality |
+| `C` | `maatproof.certificate.DeploymentCertificate` | Certificate digest and top-level `Accept(C)` report |
+| Ledger | `maatproof.ledger.JsonlDeploymentLedger` | Append-only local record and replay verification |
+| AVM boundary | `maatproof.avm.DeploymentTrace` | Trace-to-evidence conversion without private model chain-of-thought |
+
+The prototype intentionally uses HMAC-SHA256 to keep the Colab and test environment dependency-free. Ed25519 and post-quantum signature providers remain production-hardening adapters rather than certificate-validity changes.
 
 ### 1. Agent
 - Proposes deployment with signed identity (`did:maat:agent:<hex>`)
