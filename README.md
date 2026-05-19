@@ -2,7 +2,9 @@
 
 MaatProof is a research prototype for **proof-carrying deployment**: every deployment decision is packaged with a machine-checkable certificate that explains what was deployed, which evidence supports it, which policy it satisfies, and which validators attested to it.
 
-In plain terms: this repo asks, "Can an AI-assisted CI/CD system produce a deployment decision that an independent verifier can replay and trust?" The `PYTHON/` implementation demonstrates the original minimal working answer, and `RUST/` contains a Rust implementation of the same core model.
+The day autonomous agents can produce cryptographically bound, deterministic, machine-checkable deployment certificates is the day CI/CD stops being the authority of deployment and becomes the evidence layer for proof-carrying deployment.
+
+In plain terms: this repo asks, "Can an AI-assisted CI/CD system produce a deployment decision that an independent verifier can replay and trust?" The Python code demonstrates a minimal but working answer.
 
 ## Research thesis
 
@@ -281,4 +283,4 @@ This repo follows [`CONSTITUTION.md`](CONSTITUTION.md):
 
 [CC0-1.0](LICENSE)
 
-> "The day LLMs have cryptographically verifiable, deterministic reasoning is the day you can drop the pipeline entirely."
+> "The day agents can prove why they should deploy is the day pipelines stop approving deployments and start feeding proofs."
