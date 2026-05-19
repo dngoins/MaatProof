@@ -2,6 +2,8 @@
 
 MaatProof is a research prototype for **proof-carrying deployment**: every deployment decision is packaged with a machine-checkable certificate that explains what was deployed, which evidence supports it, which policy it satisfies, and which validators attested to it.
 
+The day autonomous agents can produce cryptographically bound, deterministic, machine-checkable deployment certificates is the day CI/CD stops being the authority of deployment and becomes the evidence layer for proof-carrying deployment.
+
 In plain terms: this repo asks, "Can an AI-assisted CI/CD system produce a deployment decision that an independent verifier can replay and trust?" The `PYTHON/` implementation demonstrates the original minimal working answer, and `RUST/` contains a Rust implementation of the same core model.
 
 ## Research thesis
@@ -37,15 +39,15 @@ This repository combines a formal protocol sketch with executable Python and Rus
 
 | Showcase | What to inspect |
 |---|---|
-| **Proof-carrying deployment certificate** | `PYTHON/maatproof/certificate.py`, `RUST/src/lib.rs` |
-| **Policy well-formedness (`WF(P)`)** | `PYTHON/maatproof/policy.py`, `RUST/src/lib.rs` |
-| **Signed, canonical evidence (`Auth(E)`)** | `PYTHON/maatproof/evidence.py`, `PYTHON/maatproof/canonical.py`, `RUST/src/lib.rs` |
-| **Verifiable reasoning derivation (`CheckR`)** | `PYTHON/maatproof/vrp.py`, `RUST/src/lib.rs` |
-| **Validator quorum and finality (`Quorum(A)`)** | `PYTHON/maatproof/pod.py`, `RUST/src/lib.rs` |
-| **Append-only local deployment ledger** | `PYTHON/maatproof/ledger.py`, `RUST/src/lib.rs` |
-| **AVM boundary trace-to-evidence conversion** | `PYTHON/maatproof/avm.py`, `RUST/src/lib.rs` |
-| **Hash-chained reasoning proofs** | `PYTHON/maatproof/proof.py`, `PYTHON/maatproof/chain.py`, `RUST/src/lib.rs` |
-| **Agentic CI/CD orchestration prototype** | `PYTHON/maatproof/pipeline.py`, `PYTHON/maatproof/orchestrator.py`, `PYTHON/maatproof/layers`, `RUST/src/lib.rs` |
+| **Proof-carrying deployment certificate** | `PYTHON/maatproof/certificate.py`, `RUST/src/certificate.rs` |
+| **Policy well-formedness (`WF(P)`)** | `PYTHON/maatproof/policy.py`, `RUST/src/policy.rs` |
+| **Signed, canonical evidence (`Auth(E)`)** | `PYTHON/maatproof/evidence.py`, `PYTHON/maatproof/canonical.py`, `RUST/src/evidence.rs`, `RUST/src/canonical.rs` |
+| **Verifiable reasoning derivation (`CheckR`)** | `PYTHON/maatproof/vrp.py`, `RUST/src/vrp.rs` |
+| **Validator quorum and finality (`Quorum(A)`)** | `PYTHON/maatproof/pod.py`, `RUST/src/pod.rs` |
+| **Append-only local deployment ledger** | `PYTHON/maatproof/ledger.py`, `RUST/src/ledger.rs` |
+| **AVM boundary trace-to-evidence conversion** | `PYTHON/maatproof/avm.py`, `RUST/src/avm.rs` |
+| **Hash-chained reasoning proofs** | `PYTHON/maatproof/proof.py`, `PYTHON/maatproof/chain.py`, `RUST/src/proof.rs`, `RUST/src/chain.rs` |
+| **Agentic CI/CD orchestration prototype** | `PYTHON/maatproof/pipeline.py`, `PYTHON/maatproof/orchestrator.py`, `PYTHON/maatproof/layers`, `RUST/src/pipeline.rs`, `RUST/src/orchestrator.rs`, `RUST/src/layers` |
 | **Executable demonstration** | `examples/proof_of_deploy_colab.ipynb` |
 
 The implementations intentionally use HMAC-SHA256 so the reference model is easy to run in tests and Colab. Production hardening can replace the signature backend with Ed25519 or post-quantum schemes without changing the certificate validity equation.
@@ -103,7 +105,7 @@ cargo test
 
 ## Implementation samples
 
-The Python sample below shows the original reference flow. For Rust usage, including a minimal certificate check and pointers to end-to-end test samples, see [`RUST/README.md`](RUST/README.md) and `RUST/src/lib.rs`.
+The Python sample below shows the original reference flow. For Rust usage, including a minimal certificate check and pointers to end-to-end test samples, see [`RUST/README.md`](RUST/README.md) and the unit tests in `RUST/src/core.rs`.
 
 Minimal certificate check:
 
@@ -252,7 +254,7 @@ PYTHON/
   pyproject.toml          # Python package metadata
 RUST/
   Cargo.toml              # Rust crate metadata
-  src/lib.rs              # Rust implementation and unit tests
+  src/                    # Rust implementation modules and unit tests
 ```
 
 ## Current status
@@ -281,4 +283,4 @@ This repo follows [`CONSTITUTION.md`](CONSTITUTION.md):
 
 [CC0-1.0](LICENSE)
 
-> "The day LLMs have cryptographically verifiable, deterministic reasoning is the day you can drop the pipeline entirely."
+> "The day agents can prove why they should deploy is the day pipelines stop approving deployments and start feeding proofs."

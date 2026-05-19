@@ -140,7 +140,7 @@ fn main() -> Result<(), String> {
 }
 ```
 
-For a fuller end-to-end sample with validator attestations, quorum, AVM traces, and pipeline helpers, see the unit tests in `src/lib.rs`.
+For a fuller end-to-end sample with validator attestations, quorum, AVM traces, and pipeline helpers, see the unit tests in `src/core.rs`.
 
 ## Run checks
 
