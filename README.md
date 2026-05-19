@@ -16,6 +16,8 @@ For a non-technical reader: this repo is like a black box recorder for deploymen
 
 Modern CI/CD logs tell you what happened. MaatProof aims to prove why a deployment was allowed.
 
+The formal motivation and broader protocol argument are developed in the [MaatProof White Paper](https://www.overleaf.com/read/hvsvqyvzfmhf#89e3b9).
+
 The core object is a deployment certificate:
 
 ```text
