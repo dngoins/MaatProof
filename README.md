@@ -4,13 +4,67 @@ MaatProof is a research prototype for **proof-carrying deployment**: every deplo
 
 The day autonomous agents can produce cryptographically bound, deterministic, machine-checkable deployment certificates is the day CI/CD stops being the authority of deployment and becomes the evidence layer for proof-carrying deployment.
 
-## Simple explanation
+## Why this matters
 
-Today, most deployment systems approve releases by running a pipeline and storing logs. Those logs are useful, but they are not a proof. They show what the system claims happened, not a compact certificate that another machine can independently replay.
+AI tools now let people "vibe code" an app quickly. The demo may look polished, but important deployment questions often remain unanswered:
 
-MaatProof turns a deployment into a package of proof. It says: here is the policy, here is the evidence, here is the reasoning that connects the evidence to the policy, and here are the validator attestations that finalized the decision. If any part is missing, stale, tampered with, or logically unsupported, the deployment certificate is rejected with a specific reason.
+- Why this database?
+- Why this authentication model?
+- Why single-user instead of multi-user?
+- Why no tenant isolation?
+- Why deploy now?
+- Why did the AI think this was production-ready?
 
-For a non-technical reader: this repo is like a black box recorder for deployments, but with stronger guarantees. It does not merely record that an AI agent approved a release. It shows the receipts and lets another verifier check whether the approval should have been trusted.
+MaatProof starts from a simple claim: **every AI deployment should come with a receipt.** Not just a receipt for the code, but a receipt for the decision to ship it.
+
+Before an AI-built system is deployed, it should carry a proof explaining what policy it followed, what evidence it used, what assumptions it made, and who or what verified the decision. That proof should be replayable by someone other than the AI agent that made the choice.
+
+MaatProof is a black box recorder for AI-built software. It turns mystery deployments into verifiable records. When AI writes the code, Proof-of-Deploy explains the why.
+
+Think of it as:
+
+- From vibe coding to verified shipping.
+- Do not just ship it. Prove why it should ship.
+- Proof-of-Deploy: a receipt for every AI software decision.
+- Trustless deployment for the AI coding era.
+- Every AI-built app should ship with proof of why it was safe to deploy.
+
+Blockchain gave us a way to verify financial transactions without blindly trusting the people involved. MaatProof applies that idea to AI software deployments. When an AI agent builds or deploys software, it must produce a cryptographic receipt showing what policy it followed, what evidence it used, what tests passed, what assumptions were made, and which validators agreed.
+
+Instead of asking, "Why did the AI ship this?" after something breaks, MaatProof gives you a replayable Proof-of-Deploy before the software reaches production.
+
+One-sentence version: **MaatProof is Proof-of-Deploy for the AI coding era: every AI-built app ships with a verifiable receipt explaining why it was safe to release.**
+
+For example, suppose an AI builds a demo app with a single-user architecture and a customer later asks, "Why did it choose single-user instead of multi-user?" With MaatProof, the answer should not be buried in a chat log or guessed after the fact. The deployment certificate can show:
+
+- What requirements were provided.
+- Whether multi-user support was explicitly required.
+- Which policy gates existed.
+- Which architecture assumptions were recorded.
+- Which tests were run.
+- Which deployment profile was selected.
+- Whether human approval was required.
+- Whether the app was marked as demo-only, staging, or production.
+- Whether it passed an architecture-readiness policy.
+
+## Business case
+
+AI coding changes the economics of software delivery: teams can generate and modify applications faster than traditional review, security, and compliance processes can absorb. That speed is useful only if organizations can still answer the business question behind every release: **why was this safe to ship?**
+
+MaatProof turns that question into a verifiable artifact. Instead of relying on scattered chat history, pipeline logs, or tribal memory, each deployment can carry a certificate that connects requirements, assumptions, tests, policies, approvals, and validator attestations. This makes AI-built software easier to govern, audit, sell, insure, and operate.
+
+| Business concern | Why it matters | How Proof-of-Deploy helps |
+|---|---|---|
+| **Executive accountability** | Leaders need confidence that AI-generated changes are not entering production on vibes alone. | Each release has a replayable decision record showing why it was allowed. |
+| **Audit and compliance** | Regulated teams must prove that required controls ran before deployment. | Policies, evidence, human approvals when required, and validator attestations are attached to the certificate. |
+| **Security risk** | AI may omit auth, tenant isolation, threat modeling, or production-readiness checks. | Architecture assumptions and policy gates become explicit evidence instead of hidden prompt context. |
+| **Enterprise procurement** | Buyers will ask how an AI-built system was verified before adoption. | A Proof-of-Deploy record can support due diligence, vendor review, and customer trust. |
+| **Incident response** | After an outage, teams need to know what was assumed, tested, skipped, or approved. | The certificate becomes a black box recorder for the deployment decision. |
+| **Developer productivity** | Teams want AI speed without turning review into a bottleneck. | CI/CD becomes the evidence producer; the proof checker decides whether the release is acceptable. |
+
+The business value is not just "better CI." It is a governance layer for the AI software supply chain. As AI agents move from generating demos to modifying real production systems, companies will need a way to distinguish a convincing demo from a deployment that is policy-compliant, evidence-backed, and independently verifiable.
+
+MaatProof's practical thesis is that proof-carrying deployment can become the trust boundary between fast AI software creation and responsible enterprise release management.
 
 ## Research perspective
 
