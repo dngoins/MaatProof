@@ -137,7 +137,7 @@ The design separates research concerns cleanly:
 
 ## Try it in Google Colab
 
-Open [`examples/proof_of_deploy_colab.ipynb`](examples/proof_of_deploy_colab.ipynb) to run a complete proof-of-deploy flow.
+Open [`examples/proof_of_deploy_colab.ipynb`](examples/proof_of_deploy_colab.ipynb) to run a complete proof-of-deploy flow. The notebook installs the Python package from `PYTHON/`, where the package metadata lives.
 
 The notebook demonstrates:
 
